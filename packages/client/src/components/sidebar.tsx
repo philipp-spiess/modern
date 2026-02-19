@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { type ThreadSummary, type WorkspaceThreads } from "@diffs-io/server/src/extensions/agent/threads";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import {
+  FolderClosedIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   GitBranch,
@@ -11,7 +12,7 @@ import {
   SquareMinus,
   SquarePlus,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, orpc } from "../lib/rpc";
 import { activateWorkspace, openWorkspace } from "../lib/workspace";
 import { basename, dirname } from "../utils/path";
@@ -108,7 +109,7 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
       <div className="flex min-h-0 flex-1 min-w-0 select-none flex-col overflow-y-auto p-2 gap-4">
         <section className="p-1 w-full">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs text-white/50">Workspaces</h2>
+            <h2 className="text-xs text-white/50">Threads</h2>
             <div className="flex items-center gap-0.5">
               <Button
                 onClick={() => void onAddWorkspace()}
@@ -121,46 +122,14 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
           </div>
 
           <ul className="mt-2 flex flex-col w-full">
-            {workspaces.map((cwd) => {
-              const threads = threadsByWorkspace.get(cwd) ?? [];
-
-              return (
-                <li key={cwd} className="w-full">
-                  <button
-                    type="button"
-                    onClick={() => void onActivateWorkspace(cwd)}
-                    className="hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white"
-                  >
-                    <FolderOpenIcon className="size-3.5 shrink-0 text-white/70" />
-                    <div className="truncate text-xs">{basename(cwd)}</div>
-                  </button>
-
-                  {threads.length > 0 && (
-                    <ul className="mt-0.5 mb-1 -mx-2.5">
-                      {threads.map((thread) => (
-                        <li key={thread.id}>
-                          <button
-                            type="button"
-                            className="flex w-full px-2.5 hover:bg-white/10 items-center text-xs gap-1 rounded-md py-1.5 pl-8 text-left text-white/60 hover:text-white/70"
-                          >
-                            <span className="min-w-0 flex-1">
-                              {thread.isTitleGenerating ? (
-                                <ThreadTitleShimmer seed={thread.id} />
-                              ) : (
-                                <span className="block truncate">{thread.title}</span>
-                              )}
-                            </span>
-                            <span className="shrink-0 text-xs text-white/35">
-                              {formatRelativeAge(thread.updatedAt)}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
+            {workspaces.map((cwd) => (
+              <WorkspaceItem
+                key={cwd}
+                cwd={cwd}
+                threads={threadsByWorkspace.get(cwd) ?? []}
+                onActivate={onActivateWorkspace}
+              />
+            ))}
           </ul>
         </section>
 
@@ -194,6 +163,55 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
         </section>
       </div>
     </div>
+  );
+}
+
+function WorkspaceItem({
+  cwd,
+  threads,
+  onActivate,
+}: {
+  cwd: string;
+  threads: ThreadSummary[];
+  onActivate: (cwd: string) => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const FolderIcon = expanded ? FolderOpenIcon : FolderClosedIcon;
+
+  return (
+    <li className="w-full">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white"
+      >
+        <FolderIcon className="size-3.5 shrink-0 text-white/70" />
+        <div className="truncate text-xs">{basename(cwd)}</div>
+      </button>
+
+      {expanded && threads.length > 0 && (
+        <ul className="mt-0.5 mb-1 -mx-2.5">
+          {threads.map((thread) => (
+            <li key={thread.id}>
+              <button
+                type="button"
+                onClick={() => void onActivate(cwd)}
+                className="flex w-full px-2.5 hover:bg-white/10 items-center text-xs gap-1 rounded-md py-1.5 pl-8 text-left text-white/60 hover:text-white/70"
+              >
+                <span className="min-w-0 flex-1">
+                  {thread.isTitleGenerating ? (
+                    <ThreadTitleShimmer seed={thread.id} />
+                  ) : (
+                    <span className="block truncate">{thread.title}</span>
+                  )}
+                </span>
+                <span className="shrink-0 text-xs text-white/35">{formatRelativeAge(thread.updatedAt)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
