@@ -103,6 +103,23 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
     [activeCwd],
   );
 
+  const onOpenThread = useCallback(
+    async (cwd: string, thread: ThreadSummary) => {
+      await onActivateWorkspace(cwd);
+      await client.commands.run({
+        command: "agent.openPanel",
+        args: [
+          {
+            threadPath: thread.path,
+            title: thread.title,
+          },
+        ],
+        cwd,
+      });
+    },
+    [onActivateWorkspace],
+  );
+
   return (
     <div className="flex max-h-screen h-full flex-col p-2 pr-1">
       <div data-tauri-drag-region className="h-[30px] shrink-0" />
@@ -128,6 +145,7 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
                 cwd={cwd}
                 threads={threadsByWorkspace.get(cwd) ?? []}
                 onActivate={onActivateWorkspace}
+                onOpenThread={onOpenThread}
               />
             ))}
           </ul>
@@ -170,10 +188,12 @@ function WorkspaceItem({
   cwd,
   threads,
   onActivate,
+  onOpenThread,
 }: {
   cwd: string;
   threads: ThreadSummary[];
   onActivate: (cwd: string) => Promise<void>;
+  onOpenThread: (cwd: string, thread: ThreadSummary) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(true);
   const FolderIcon = expanded ? FolderOpenIcon : FolderClosedIcon;
@@ -182,7 +202,10 @@ function WorkspaceItem({
     <li className="w-full">
       <button
         type="button"
-        onClick={() => setExpanded((prev) => !prev)}
+        onClick={() => {
+          void onActivate(cwd);
+          setExpanded((prev) => !prev);
+        }}
         className="hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white"
       >
         <FolderIcon className="size-3.5 shrink-0 text-white/70" />
@@ -195,7 +218,7 @@ function WorkspaceItem({
             <li key={thread.id}>
               <button
                 type="button"
-                onClick={() => void onActivate(cwd)}
+                onClick={() => void onOpenThread(cwd, thread)}
                 className="flex w-full px-2.5 hover:bg-white/10 items-center text-xs gap-1 rounded-md py-1.5 pl-8 text-left text-white/60 hover:text-white/70"
               >
                 <span className="min-w-0 flex-1">
