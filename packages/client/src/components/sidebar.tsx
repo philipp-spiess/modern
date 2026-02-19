@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { type ThreadSummary, type WorkspaceThreads } from "@diffs-io/server/src/extensions/agent/threads";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import {
   FolderOpenIcon,
@@ -29,7 +31,24 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
     }),
   );
 
+  const workspaceThreadsQuery = useSuspenseQuery({
+    ...orpc.agent.threadsList.queryOptions({
+      queryKey: ["agent", "threadsList", workspaces.join("|")],
+      input: {
+        workspaces: [...workspaces],
+      },
+      context: { cache: true },
+    }),
+    refetchInterval: (query) => (hasPendingThreadTitles(query.state.data) ? 1_500 : false),
+    refetchIntervalInBackground: true,
+  });
+
   const files = (data?.files ?? noFiles) as StatusFile[];
+
+  const threadsByWorkspace = useMemo(() => {
+    const groups = (workspaceThreadsQuery.data?.workspaces as WorkspaceThreads[] | undefined) ?? [];
+    return new Map<string, ThreadSummary[]>(groups.map((group) => [group.cwd, group.threads]));
+  }, [workspaceThreadsQuery.data?.workspaces]);
 
   const stageMutation = useMutation(orpc.git.stage.mutationOptions({}));
   const unstageMutation = useMutation(orpc.git.unstage.mutationOptions({}));
@@ -102,18 +121,46 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
           </div>
 
           <ul className="mt-2 flex flex-col w-full">
-            {workspaces.map((cwd) => (
-              <li key={cwd} className="w-full">
-                <button
-                  type="button"
-                  onClick={() => void onActivateWorkspace(cwd)}
-                  className="hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white"
-                >
-                  <FolderOpenIcon className="size-3.5 shrink-0 text-white/70" />
-                  <div className="truncate text-xs">{basename(cwd)}</div>
-                </button>
-              </li>
-            ))}
+            {workspaces.map((cwd) => {
+              const threads = threadsByWorkspace.get(cwd) ?? [];
+
+              return (
+                <li key={cwd} className="w-full">
+                  <button
+                    type="button"
+                    onClick={() => void onActivateWorkspace(cwd)}
+                    className="hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white"
+                  >
+                    <FolderOpenIcon className="size-3.5 shrink-0 text-white/70" />
+                    <div className="truncate text-xs">{basename(cwd)}</div>
+                  </button>
+
+                  {threads.length > 0 && (
+                    <ul className="mt-0.5 mb-1 -mx-2.5">
+                      {threads.map((thread) => (
+                        <li key={thread.id}>
+                          <button
+                            type="button"
+                            className="flex w-full px-2.5 hover:bg-white/10 items-center text-xs gap-1 rounded-md py-1.5 pl-8 text-left text-white/60 hover:text-white/70"
+                          >
+                            <span className="min-w-0 flex-1">
+                              {thread.isTitleGenerating ? (
+                                <ThreadTitleShimmer seed={thread.id} />
+                              ) : (
+                                <span className="block truncate">{thread.title}</span>
+                              )}
+                            </span>
+                            <span className="shrink-0 text-xs text-white/35">
+                              {formatRelativeAge(thread.updatedAt)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
 
@@ -148,6 +195,72 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
       </div>
     </div>
   );
+}
+
+const THREAD_TITLE_SHIMMER_VARIANTS = [
+  ["w-20", "w-12", "w-16"],
+  ["w-18", "w-14", "w-16"],
+  ["w-22", "w-10", "w-16"],
+  ["w-16", "w-14", "w-18"],
+] as const;
+
+function ThreadTitleShimmer({ seed }: { seed: string }) {
+  const variant = THREAD_TITLE_SHIMMER_VARIANTS[hashSeed(seed) % THREAD_TITLE_SHIMMER_VARIANTS.length];
+
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={cn("h-3 animate-pulse rounded-sm bg-white/10", variant[0])} />
+      <span className={cn("h-3 animate-pulse rounded-sm bg-white/10", variant[1])} />
+      <span className={cn("h-3 animate-pulse rounded-sm bg-white/10", variant[2])} />
+    </span>
+  );
+}
+
+function hashSeed(seed: string): number {
+  let hash = 0;
+
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+
+  return hash;
+}
+
+function hasPendingThreadTitles(data: unknown): boolean {
+  const workspaces = (data as { workspaces?: WorkspaceThreads[] } | undefined)?.workspaces;
+  if (!workspaces?.length) {
+    return false;
+  }
+
+  return workspaces.some((workspace) => workspace.threads.some((thread) => thread.isTitleGenerating));
+}
+
+function formatRelativeAge(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - timestamp);
+
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+
+  if (elapsedMs < hour) {
+    return `${Math.max(1, Math.floor(elapsedMs / minute))}m`;
+  }
+
+  if (elapsedMs < day) {
+    return `${Math.max(1, Math.floor(elapsedMs / hour))}h`;
+  }
+
+  if (elapsedMs < week) {
+    return `${Math.max(1, Math.floor(elapsedMs / day))}d`;
+  }
+
+  return `${Math.max(1, Math.floor(elapsedMs / week))}w`;
 }
 
 type FileState = "staged" | "partial" | "unstaged";

@@ -2,6 +2,7 @@ import { os } from "@orpc/server";
 import type { StatusResult } from "simple-git";
 import * as z from "zod";
 import { executeCommand, executeCommandForWorkspace, listRegisteredCommands } from "./extension";
+import { agentRouter } from "./extensions/agent/router";
 import { filesRouter } from "./extensions/files/router";
 import { fileIndex } from "./file-index";
 import { gitStatusSignal, showHead, showStaged, showWorktree, stage, unstage } from "./git";
@@ -316,6 +317,7 @@ type AppRouter = {
     list: typeof commandsList;
     run: typeof commandsRun;
   };
+  agent: typeof agentRouter;
 };
 
 export const router: AppRouter = {
@@ -350,4 +352,5 @@ export const router: AppRouter = {
     list: commandsList,
     run: commandsRun,
   },
+  agent: agentRouter,
 };

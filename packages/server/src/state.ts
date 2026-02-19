@@ -1,6 +1,7 @@
 import { type Signal, signal } from "@preact/signals-core";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import agentExtension, { id as agentExtensionId } from "./extensions/agent";
 import filesExtension, { id as filesExtensionId } from "./extensions/files";
 import reviewExtension, { id as reviewExtensionId } from "./extensions/review";
 import terminalExtension, { id as terminalExtensionId } from "./extensions/terminal";
@@ -78,6 +79,7 @@ const workspaceSessions = new Map<string, WorkspaceSession>();
 
 const extensionEntries = [
   { extension: viewExtension, id: viewExtensionId },
+  { extension: agentExtension, id: agentExtensionId },
   { extension: filesExtension, id: filesExtensionId },
   { extension: reviewExtension, id: reviewExtensionId },
   { extension: terminalExtension, id: terminalExtensionId },
