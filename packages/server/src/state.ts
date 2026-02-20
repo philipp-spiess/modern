@@ -63,10 +63,24 @@ export interface Workspaces {
   open: readonly string[];
 }
 
+export interface WorkspaceExistingThreadSelection {
+  kind: "existing";
+  threadPath: string;
+  title?: string;
+}
+
+export interface WorkspaceDraftThreadSelection {
+  kind: "draft";
+  title?: string;
+}
+
+export type WorkspaceThreadSelection = WorkspaceExistingThreadSelection | WorkspaceDraftThreadSelection;
+
 interface WorkspaceSession {
   cwd: string;
   tabs: Tabs;
   panels: Map<string, Panel>;
+  activeThread: WorkspaceThreadSelection | null;
   activated: boolean;
   initializing?: Promise<void>;
   cleanup: () => Promise<void>;
@@ -112,6 +126,20 @@ function normalizeWorkspaceList(value: unknown): string[] {
   return output;
 }
 
+function areSetsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function loadPersistedWorkspaces(): string[] {
   const stored = getGlobal<string[]>(WORKSPACES_STORAGE_SCOPE, WORKSPACES_STORAGE_KEY, []);
   return normalizeWorkspaceList(stored);
@@ -142,11 +170,13 @@ export const state: {
   commands: Signal<Map<string, Command>>;
   panels: Signal<Map<string, Panel>>;
   tabs: Signal<Tabs>;
+  activeThread: Signal<WorkspaceThreadSelection | null>;
 } = {
   workspaces: signal<Workspaces>({ active: null, open: initialOpenWorkspaces }),
   commands: signal(new Map<string, Command>()),
   panels: signal(new Map<string, Panel>()),
   tabs: signal<Tabs>({ groups: [] }),
+  activeThread: signal<WorkspaceThreadSelection | null>(null),
 };
 
 export const workspaceStateRevision = signal(0);
@@ -162,7 +192,9 @@ export function listOpenWorkspaces(): readonly string[] {
   return state.workspaces.value.open;
 }
 
-export function getWorkspaceExpansionMap(workspaces: readonly string[] = listOpenWorkspaces()): Record<string, boolean> {
+export function getWorkspaceExpansionMap(
+  workspaces: readonly string[] = listOpenWorkspaces(),
+): Record<string, boolean> {
   const expandedByWorkspace: Record<string, boolean> = {};
 
   for (const cwd of workspaces) {
@@ -183,10 +215,7 @@ export async function setWorkspaceExpanded(cwd: string, expanded: boolean): Prom
     nextCollapsedWorkspaces.add(resolvedCwd);
   }
 
-  const changed =
-    nextCollapsedWorkspaces.size !== collapsedWorkspaces.size ||
-    [...nextCollapsedWorkspaces].some((value) => !collapsedWorkspaces.has(value));
-  if (!changed) {
+  if (areSetsEqual(nextCollapsedWorkspaces, collapsedWorkspaces)) {
     return;
   }
 
@@ -218,6 +247,7 @@ function getOrCreateWorkspaceSession(cwd: string): WorkspaceSession {
     cwd: resolvedCwd,
     tabs: { groups: [] },
     panels: new Map(),
+    activeThread: null,
     activated: false,
     cleanup: async () => {},
   };
@@ -276,6 +306,10 @@ function clonePanel(panel: Panel): Panel {
   };
 }
 
+function cloneWorkspaceThreadSelection(thread: WorkspaceThreadSelection | null): WorkspaceThreadSelection | null {
+  return thread ? { ...thread } : null;
+}
+
 function bumpWorkspaceStateRevision(): void {
   workspaceStateRevision.value += 1;
 }
@@ -285,6 +319,28 @@ function resolveWorkspaceCwd(cwd?: string): string | null {
     return path.resolve(cwd);
   }
   return getActiveWorkspaceCwd();
+}
+
+function normalizeThreadSelection(cwd: string, input: WorkspaceThreadSelection): WorkspaceThreadSelection {
+  const title = input.title?.trim();
+
+  if (input.kind === "draft") {
+    return {
+      kind: "draft",
+      ...(title ? { title } : {}),
+    };
+  }
+
+  const threadPath = input.threadPath?.trim();
+  if (!threadPath) {
+    throw new Error("threadPath is required.");
+  }
+
+  return {
+    kind: "existing",
+    threadPath: path.resolve(cwd, threadPath),
+    ...(title ? { title } : {}),
+  };
 }
 
 export function getWorkspaceTabs(cwd?: string): Tabs {
@@ -311,11 +367,38 @@ export function getWorkspacePanels(cwd?: string): readonly Panel[] {
   return Array.from(session.panels.values(), clonePanel);
 }
 
+export function getWorkspaceActiveThread(cwd?: string): WorkspaceThreadSelection | null {
+  const resolvedCwd = resolveWorkspaceCwd(cwd);
+  if (!resolvedCwd) {
+    return null;
+  }
+
+  const session = workspaceSessions.get(resolvedCwd);
+  return cloneWorkspaceThreadSelection(session?.activeThread ?? null);
+}
+
+export function setWorkspaceActiveThread(
+  cwd: string,
+  thread: WorkspaceThreadSelection | null,
+): WorkspaceThreadSelection | null {
+  const session = getOrCreateWorkspaceSession(cwd);
+  session.activeThread = thread ? normalizeThreadSelection(session.cwd, thread) : null;
+
+  if (getActiveWorkspaceCwd() === session.cwd) {
+    syncActiveWorkspaceState();
+  } else {
+    bumpWorkspaceStateRevision();
+  }
+
+  return cloneWorkspaceThreadSelection(session.activeThread);
+}
+
 function syncActiveWorkspaceState(): void {
   const activeCwd = getActiveWorkspaceCwd();
   if (!activeCwd) {
     state.tabs.value = { groups: [] };
     state.panels.value = new Map();
+    state.activeThread.value = null;
     bumpWorkspaceStateRevision();
     return;
   }
@@ -323,6 +406,7 @@ function syncActiveWorkspaceState(): void {
   const session = getOrCreateWorkspaceSession(activeCwd);
   state.tabs.value = cloneTabs(session.tabs);
   state.panels.value = new Map(session.panels);
+  state.activeThread.value = cloneWorkspaceThreadSelection(session.activeThread);
   bumpWorkspaceStateRevision();
 }
 
@@ -373,6 +457,11 @@ export async function openWorkspace(cwd: string) {
   } finally {
     openWorkspacePromise = null;
   }
+}
+
+export async function openWorkspaceWithThread(cwd: string, thread: WorkspaceThreadSelection): Promise<void> {
+  await openWorkspace(cwd);
+  setWorkspaceActiveThread(cwd, thread);
 }
 
 export function registerExtensionCommand(entry: CommandRegistration) {
@@ -448,6 +537,7 @@ export function __resetStateForTests() {
   state.commands.value = new Map();
   state.panels.value = new Map();
   state.tabs.value = { groups: [] };
+  state.activeThread.value = null;
   collapsedWorkspaces = new Set();
   shutdownStorage();
 }

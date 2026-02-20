@@ -1,5 +1,5 @@
 import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@diffs-io/server/src/state";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import AgentChatPanel from "../extensions/agent/chat";
 import { useHandle } from "../lib/use-handle";
 import { basename } from "../utils/path";
@@ -11,7 +11,7 @@ type WorkspaceShellProps = {
   activeThread: WorkspaceThreadSelection | null;
 };
 
-export default function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellProps) {
+function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellProps) {
   const [hasOpenTabs, setHasOpenTabs] = useState(false);
   const [tabsWidth, tabsHandleProps] = useHandle("horizontal", `workspace-tabs-width:${workspaceCwd}`, 560, {
     invert: true,
@@ -121,7 +121,7 @@ export default function WorkspaceShell({ active, workspaceCwd, activeThread }: W
           role="separator"
           aria-label="Resize workspace tabs"
           aria-orientation="vertical"
-          className="absolute -inset-x-2 inset-y-0 cursor-ew-resize"
+          className="absolute -inset-x-2 inset-y-0 cursor-ew-resize touch-none"
         />
       </div>
 
@@ -211,3 +211,5 @@ function resolveDraftThreadTitle(selection: WorkspaceThreadSelection | null): st
   const title = selection.title?.trim();
   return title || "New Thread";
 }
+
+export default memo(WorkspaceShell);

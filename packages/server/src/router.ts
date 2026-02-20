@@ -10,11 +10,13 @@ import { settings, writeSettings } from "./settings";
 import {
   closeTab,
   getActiveWorkspaceCwd,
+  getWorkspaceActiveThread,
   getWorkspaceExpansionMap,
   getWorkspacePanels,
   getWorkspaceTabs,
   listOpenWorkspaces,
   openWorkspace,
+  openWorkspaceWithThread,
   setWorkspaceExpanded,
   state,
   workspaceStateRevision,
@@ -82,6 +84,7 @@ const resolveWorkspaceState = () => {
     cwd: getActiveWorkspaceCwd(),
     workspaces,
     expandedByWorkspace: getWorkspaceExpansionMap(workspaces),
+    activeThread: getWorkspaceActiveThread(),
   };
 };
 
@@ -120,6 +123,38 @@ export const workspaceSetExpanded = os
   )
   .handler(async ({ input }) => {
     await setWorkspaceExpanded(input.cwd, input.expanded);
+    return resolveWorkspaceState();
+  });
+
+export const workspaceOpenWithThread = os
+  .input(
+    z.object({
+      cwd: z.string(),
+      threadPath: z.string().min(1),
+      title: z.string().optional(),
+    }),
+  )
+  .handler(async ({ input }) => {
+    await openWorkspaceWithThread(input.cwd, {
+      kind: "existing",
+      threadPath: input.threadPath,
+      title: input.title,
+    });
+    return resolveWorkspaceState();
+  });
+
+export const workspaceOpenNewThread = os
+  .input(
+    z.object({
+      cwd: z.string(),
+      title: z.string().optional(),
+    }),
+  )
+  .handler(async ({ input }) => {
+    await openWorkspaceWithThread(input.cwd, {
+      kind: "draft",
+      title: input.title,
+    });
     return resolveWorkspaceState();
   });
 
@@ -324,6 +359,8 @@ type AppRouter = {
     open: typeof workspaceOpen;
     activate: typeof workspaceActivate;
     setExpanded: typeof workspaceSetExpanded;
+    openWithThread: typeof workspaceOpenWithThread;
+    openNewThread: typeof workspaceOpenNewThread;
   };
   tabs: {
     watch: typeof tabsWatch;
@@ -360,6 +397,8 @@ export const router: AppRouter = {
     open: workspaceOpen,
     activate: workspaceActivate,
     setExpanded: workspaceSetExpanded,
+    openWithThread: workspaceOpenWithThread,
+    openNewThread: workspaceOpenNewThread,
   },
   tabs: {
     watch: tabsWatch,

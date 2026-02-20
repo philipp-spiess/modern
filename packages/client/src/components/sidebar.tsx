@@ -1,31 +1,40 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type ThreadSummary, type WorkspaceThreads } from "@diffs-io/server/src/extensions/agent/threads";
+import type { WorkspaceThreadSelection } from "@diffs-io/server/src/state";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import {
   FolderClosedIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   GitBranch,
+  SquarePen,
   type LucideIcon,
   SquareDot,
   SquareMinus,
   SquarePlus,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { client, orpc } from "../lib/rpc";
-import { activateWorkspace, openWorkspace, setWorkspaceExpanded } from "../lib/workspace";
+import {
+  activateWorkspace,
+  openWorkspace,
+  openWorkspaceWithNewThread,
+  openWorkspaceWithThread,
+  setWorkspaceExpanded,
+} from "../lib/workspace";
 import { basename, dirname } from "../utils/path";
 
 const noFiles: StatusFile[] = [];
 
 type SidebarProps = {
   activeCwd: string;
+  activeThread: WorkspaceThreadSelection | null;
   workspaces: readonly string[];
   expandedByWorkspace: Record<string, boolean>;
 };
 
-export default function Sidebar({ activeCwd, workspaces, expandedByWorkspace }: SidebarProps) {
+function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: SidebarProps) {
   const { data } = useSuspenseQuery(
     orpc.git.statusWatch.experimental_liveOptions({
       context: { cache: true },
@@ -51,6 +60,9 @@ export default function Sidebar({ activeCwd, workspaces, expandedByWorkspace }: 
     const groups = (workspaceThreadsQuery.data?.workspaces as WorkspaceThreads[] | undefined) ?? [];
     return new Map<string, ThreadSummary[]>(groups.map((group) => [group.cwd, group.threads]));
   }, [workspaceThreadsQuery.data?.workspaces]);
+
+  const activeThreadPath = activeThread?.kind === "existing" ? activeThread.threadPath : null;
+  const isNewThreadActive = activeThread?.kind === "draft";
 
   const stageMutation = useMutation(orpc.git.stage.mutationOptions({}));
   const unstageMutation = useMutation(orpc.git.unstage.mutationOptions({}));
@@ -112,27 +124,32 @@ export default function Sidebar({ activeCwd, workspaces, expandedByWorkspace }: 
     [expandedByWorkspace],
   );
 
-  const onOpenThread = useCallback(
-    async (cwd: string, thread: ThreadSummary) => {
-      await onActivateWorkspace(cwd);
-      await client.commands.run({
-        command: "agent.openPanel",
-        args: [
-          {
-            threadPath: thread.path,
-            title: thread.title,
-          },
-        ],
-        cwd,
-      });
-    },
-    [onActivateWorkspace],
-  );
+  const onOpenThread = useCallback(async (cwd: string, thread: ThreadSummary) => {
+    await openWorkspaceWithThread(cwd, thread.path, thread.title);
+  }, []);
+
+  const onCreateThread = useCallback(async () => {
+    await openWorkspaceWithNewThread(activeCwd);
+  }, [activeCwd]);
 
   return (
     <div className="flex max-h-screen h-full flex-col p-2 pr-1">
       <div data-tauri-drag-region className="h-[30px] shrink-0" />
       <div className="flex min-h-0 flex-1 min-w-0 select-none flex-col overflow-y-auto p-2 gap-4">
+        <div className="p-1 w-full">
+          <button
+            type="button"
+            onClick={() => void onCreateThread()}
+            className={cn(
+              "rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white",
+              isNewThreadActive && "bg-white/8 text-white",
+            )}
+          >
+            <SquarePen className="size-3.5 shrink-0 text-white/70" />
+            <span>New Thread</span>
+          </button>
+        </div>
+
         <section className="p-1 w-full">
           <div className="flex items-center justify-between">
             <h2 className="text-xs text-white/50">Threads</h2>
@@ -153,6 +170,7 @@ export default function Sidebar({ activeCwd, workspaces, expandedByWorkspace }: 
                 key={cwd}
                 cwd={cwd}
                 expanded={expandedByWorkspace[cwd] ?? true}
+                activeThreadPath={cwd === activeCwd ? activeThreadPath : null}
                 threads={threadsByWorkspace.get(cwd) ?? []}
                 onActivate={onActivateWorkspace}
                 onToggleExpanded={onToggleWorkspaceExpanded}
@@ -198,6 +216,7 @@ export default function Sidebar({ activeCwd, workspaces, expandedByWorkspace }: 
 function WorkspaceItem({
   cwd,
   expanded,
+  activeThreadPath,
   threads,
   onActivate,
   onToggleExpanded,
@@ -205,6 +224,7 @@ function WorkspaceItem({
 }: {
   cwd: string;
   expanded: boolean;
+  activeThreadPath: string | null;
   threads: ThreadSummary[];
   onActivate: (cwd: string) => Promise<void>;
   onToggleExpanded: (cwd: string) => Promise<void>;
@@ -217,10 +237,14 @@ function WorkspaceItem({
       <button
         type="button"
         onClick={() => {
-          void onActivate(cwd);
-          void onToggleExpanded(cwd);
+          void (async () => {
+            await onActivate(cwd);
+            await onToggleExpanded(cwd);
+          })();
         }}
-        className="hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white"
+        className={cn(
+          "hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white",
+        )}
       >
         <FolderIcon className="size-3.5 shrink-0 text-white/70" />
         <div className="truncate text-xs">{basename(cwd)}</div>
@@ -228,24 +252,30 @@ function WorkspaceItem({
 
       {expanded && threads.length > 0 && (
         <ul className="mt-0.5 mb-1 -mx-2.5">
-          {threads.map((thread) => (
-            <li key={thread.id}>
-              <button
-                type="button"
-                onClick={() => void onOpenThread(cwd, thread)}
-                className="flex w-full px-2.5 hover:bg-white/10 items-center text-xs gap-1 rounded-md py-1.5 pl-8 text-left text-white/60 hover:text-white/70"
-              >
-                <span className="min-w-0 flex-1">
-                  {thread.isTitleGenerating ? (
-                    <ThreadTitleShimmer seed={thread.id} />
-                  ) : (
-                    <span className="block truncate">{thread.title}</span>
+          {threads.map((thread) => {
+            const isActiveThread = activeThreadPath === thread.path;
+            return (
+              <li key={thread.id}>
+                <button
+                  type="button"
+                  onClick={() => void onOpenThread(cwd, thread)}
+                  className={cn(
+                    "flex w-full px-2.5 hover:bg-white/10 items-center text-xs gap-1 rounded-md py-1.5 pl-8 text-left text-white/60 hover:text-white/70",
+                    isActiveThread && "bg-white/8 text-white/80",
                   )}
-                </span>
-                <span className="shrink-0 text-xs text-white/35">{formatRelativeAge(thread.updatedAt)}</span>
-              </button>
-            </li>
-          ))}
+                >
+                  <span className="min-w-0 flex-1">
+                    {thread.isTitleGenerating ? (
+                      <ThreadTitleShimmer seed={thread.id} />
+                    ) : (
+                      <span className="block truncate">{thread.title}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs text-white/35">{formatRelativeAge(thread.updatedAt)}</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </li>
@@ -429,3 +459,5 @@ function getIcon(kind: ChangeKind): IconConfig {
       };
   }
 }
+
+export default memo(Sidebar);

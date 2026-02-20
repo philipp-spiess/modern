@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockviewReact, type DockviewReadyEvent } from "dockview";
 import { Loader2Icon, XIcon } from "lucide-react";
 import { DynamicIcon } from "lucide-react/dynamic";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { client, orpc } from "../lib/rpc";
 
 import "dockview/dist/styles/dockview.css";
@@ -98,6 +98,7 @@ const tabComponents = {
 type TabsProps = {
   active: boolean;
   workspaceCwd: string;
+  onHasOpenTabsChange?: (hasOpenTabs: boolean) => void;
 };
 
 function cloneTabs(tabs: TabsType): TabsType {
@@ -127,7 +128,7 @@ function removeTab(tabs: TabsType, tabId: string): TabsType {
   };
 }
 
-export function Tabs({ active, workspaceCwd }: TabsProps) {
+function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps) {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const [tabsData, setTabsData] = useState<TabsType>(emptyTabs);
   const [panelsData, setPanelsData] = useState<Panel[]>(emptyPanels);
@@ -172,6 +173,10 @@ export function Tabs({ active, workspaceCwd }: TabsProps) {
   }, [active, incomingPanels]);
 
   const hasOpenTabs = useMemo(() => tabsData.groups.some((group) => group.tabs.length > 0), [tabsData]);
+
+  useEffect(() => {
+    onHasOpenTabsChange?.(hasOpenTabs);
+  }, [hasOpenTabs, onHasOpenTabsChange]);
 
   const getFallbackTabId = useCallback(() => {
     for (const group of tabsData.groups) {
@@ -321,3 +326,5 @@ const theme = {
   className: "dockview-theme-diffs",
   gap: 8,
 };
+
+export const Tabs = memo(TabsComponent);

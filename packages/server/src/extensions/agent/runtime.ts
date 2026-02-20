@@ -7,7 +7,7 @@ import {
   SessionManager,
   type AgentSession,
 } from "@mariozechner/pi-coding-agent";
-import type { AgentThreadModelSummary, AgentThreadViewState } from "./types";
+import type { AgentThreadMetaState, AgentThreadModelSummary, AgentThreadViewState } from "./types";
 
 export interface AgentThreadRuntime {
   threadPath: string;
@@ -19,11 +19,11 @@ const modelRegistry = new ModelRegistry(authStorage);
 const runtimeByThreadPath = new Map<string, Promise<AgentThreadRuntime>>();
 
 export async function getThreadRuntime(threadPath: string): Promise<AgentThreadRuntime> {
-  const resolvedPath = resolveThreadPath(threadPath);
+  const resolvedPath = path.resolve(threadPath);
   let runtimePromise = runtimeByThreadPath.get(resolvedPath);
 
   if (!runtimePromise) {
-    runtimePromise = createThreadRuntime(resolvedPath);
+    runtimePromise = createPersistedThreadRuntime(resolvedPath);
     runtimeByThreadPath.set(resolvedPath, runtimePromise);
   }
 
@@ -35,7 +35,28 @@ export async function getThreadRuntime(threadPath: string): Promise<AgentThreadR
   }
 }
 
-function resolveThreadPath(threadPath: string): string {
+export async function createThreadRuntimeForWorkspace(cwd: string): Promise<AgentThreadRuntime> {
+  const resolvedCwd = path.resolve(cwd);
+  const sessionManager = SessionManager.create(resolvedCwd);
+  const threadPath = sessionManager.getSessionFile();
+
+  if (!threadPath) {
+    throw new Error(`Failed to create thread session for workspace "${resolvedCwd}".`);
+  }
+
+  const resolvedPath = path.resolve(threadPath);
+  const runtimePromise = createThreadRuntime(resolvedPath, sessionManager, resolvedCwd);
+  runtimeByThreadPath.set(resolvedPath, runtimePromise);
+
+  try {
+    return await runtimePromise;
+  } catch (error) {
+    runtimeByThreadPath.delete(resolvedPath);
+    throw error;
+  }
+}
+
+function resolveExistingThreadPath(threadPath: string): string {
   const resolvedPath = path.resolve(threadPath);
 
   if (!existsSync(resolvedPath)) {
@@ -45,9 +66,18 @@ function resolveThreadPath(threadPath: string): string {
   return resolvedPath;
 }
 
-async function createThreadRuntime(threadPath: string): Promise<AgentThreadRuntime> {
-  const sessionManager = SessionManager.open(threadPath);
-  const cwd = sessionManager.getCwd() || process.cwd();
+async function createPersistedThreadRuntime(threadPath: string): Promise<AgentThreadRuntime> {
+  const resolvedPath = resolveExistingThreadPath(threadPath);
+  const sessionManager = SessionManager.open(resolvedPath);
+  return createThreadRuntime(resolvedPath, sessionManager);
+}
+
+async function createThreadRuntime(
+  threadPath: string,
+  sessionManager: SessionManager,
+  cwdOverride?: string,
+): Promise<AgentThreadRuntime> {
+  const cwd = cwdOverride ?? sessionManager.getCwd() ?? process.cwd();
   const { session } = await createAgentSession({
     cwd,
     authStorage,
@@ -68,6 +98,14 @@ export function getThreadViewState(runtime: AgentThreadRuntime): AgentThreadView
     threadPath: runtime.threadPath,
     messages: structuredClone(session.messages),
     streamMessage: session.state.streamMessage ? structuredClone(session.state.streamMessage) : null,
+    ...getThreadMetaState(runtime),
+  };
+}
+
+export function getThreadMetaState(runtime: AgentThreadRuntime): AgentThreadMetaState {
+  const { session } = runtime;
+
+  return {
     isStreaming: session.isStreaming,
     steeringQueue: [...session.getSteeringMessages()],
     followUpQueue: [...session.getFollowUpMessages()],

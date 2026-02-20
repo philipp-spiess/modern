@@ -55,7 +55,9 @@ export interface WorkspaceThreads {
 export async function listThreadsForWorkspace(cwd: string, limit = DEFAULT_THREAD_LIMIT): Promise<ThreadSummary[]> {
   const sessions = await SessionManager.list(cwd);
 
-  const sorted = sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+  const sorted = sessions
+    .filter((session) => session.messageCount > 0)
+    .sort((a, b) => b.modified.getTime() - a.modified.getTime());
   const selected = sorted.slice(0, Math.max(limit, 0));
 
   return selected.map((session) => toThreadSummary(session));

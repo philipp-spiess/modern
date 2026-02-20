@@ -30,6 +30,31 @@ export async function activateWorkspace(cwd: string) {
   }
 }
 
+export async function openWorkspaceWithThread(cwd: string, threadPath: string, title?: string) {
+  try {
+    const workspaceState = await client.workspace.openWithThread({
+      cwd,
+      threadPath,
+      title,
+    });
+    syncWorkspaceState(workspaceState);
+  } catch (error) {
+    console.error("Failed to open workspace thread:", error);
+  }
+}
+
+export async function openWorkspaceWithNewThread(cwd: string, title = "New Thread") {
+  try {
+    const workspaceState = await client.workspace.openNewThread({
+      cwd,
+      title,
+    });
+    syncWorkspaceState(workspaceState);
+  } catch (error) {
+    console.error("Failed to open new workspace thread:", error);
+  }
+}
+
 export async function setWorkspaceExpanded(cwd: string, expanded: boolean) {
   try {
     const workspaceState = await client.workspace.setExpanded({ cwd, expanded });

@@ -1,12 +1,15 @@
 import type {
   AgentThreadAbortResult,
   AgentThreadDeliveryMode,
+  AgentThreadMetaState,
   AgentThreadSendResult,
+  AgentThreadStreamMessage,
   AgentThreadViewState,
   AgentThreadWatchUpdate,
 } from "@diffs-io/server/src/extensions/agent/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
+import { queryClient } from "../../lib/query-client";
 import { client, orpc } from "../../lib/rpc";
 
 type AgentThreadEvent = Extract<AgentThreadWatchUpdate, { kind: "event" }>["event"];
@@ -53,9 +56,21 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
       return;
     }
 
-    setState(incomingUpdate.state);
+    if (incomingUpdate.kind === "snapshot") {
+      setState(incomingUpdate.state);
+      setLastEvent(null);
+    } else {
+      setState((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return applyThreadMetaState(applyThreadEvent(current, incomingUpdate.event), incomingUpdate.meta);
+      });
+      setLastEvent(incomingUpdate.event);
+    }
+
     setSeq(incomingUpdate.seq);
-    setLastEvent(incomingUpdate.kind === "event" ? incomingUpdate.event : null);
   }, [incomingUpdate]);
 
   const sendMutation = useMutation({
@@ -87,7 +102,8 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
   const send = useCallback(
     async (text: string, delivery: AgentThreadDeliveryMode = "auto") => {
       const result = await sendMutation.mutateAsync({ text, delivery });
-      setState(result.state);
+      setState((current) => (current ? applyThreadMetaState(current, result.meta) : current));
+      void queryClient.invalidateQueries({ queryKey: ["agent", "threadsList"] });
       return result;
     },
     [sendMutation],
@@ -95,7 +111,7 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
 
   const abort = useCallback(async () => {
     const result = await abortMutation.mutateAsync();
-    setState(result.state);
+    setState((current) => (current ? applyThreadMetaState(current, result.meta) : current));
     return result;
   }, [abortMutation]);
 
@@ -112,4 +128,105 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
     send,
     abort,
   };
+}
+
+function applyThreadMetaState(state: AgentThreadViewState, meta: AgentThreadMetaState): AgentThreadViewState {
+  return {
+    ...state,
+    ...meta,
+  };
+}
+
+function applyThreadEvent(state: AgentThreadViewState, event: AgentThreadEvent): AgentThreadViewState {
+  switch (event.type) {
+    case "message_start": {
+      if (event.message.role !== "assistant") {
+        return state;
+      }
+
+      return {
+        ...state,
+        streamMessage: event.message as AgentThreadStreamMessage,
+      };
+    }
+
+    case "message_update": {
+      if (event.message.role !== "assistant") {
+        return state;
+      }
+
+      return {
+        ...state,
+        streamMessage: event.message as AgentThreadStreamMessage,
+      };
+    }
+
+    case "message_end": {
+      return {
+        ...state,
+        messages: [...state.messages, event.message],
+        streamMessage: event.message.role === "assistant" ? null : state.streamMessage,
+      };
+    }
+
+    case "turn_end": {
+      return appendMissingMessages(state, [event.message, ...event.toolResults]);
+    }
+
+    case "agent_end": {
+      const withClearedStream =
+        state.streamMessage === null
+          ? state
+          : {
+              ...state,
+              streamMessage: null,
+            };
+
+      if (event.messages.length === 0) {
+        return withClearedStream;
+      }
+
+      return appendMissingMessages(withClearedStream, event.messages);
+    }
+
+    default:
+      return state;
+  }
+}
+
+function appendMissingMessages(
+  state: AgentThreadViewState,
+  incoming: AgentThreadViewState["messages"],
+): AgentThreadViewState {
+  const seen = new Set(state.messages.map(getMessageKey));
+  const missing = incoming.filter((message) => !seen.has(getMessageKey(message)));
+
+  if (missing.length === 0) {
+    return state;
+  }
+
+  return {
+    ...state,
+    messages: [...state.messages, ...missing],
+  };
+}
+
+function getMessageKey(message: AgentThreadViewState["messages"][number]): string {
+  if (message.role === "toolResult") {
+    return `${message.role}:${message.timestamp}:${message.toolCallId}`;
+  }
+
+  if (message.role === "assistant") {
+    return `${message.role}:${message.timestamp}:${message.stopReason}:${message.model}`;
+  }
+
+  if (message.role === "custom") {
+    return `${message.role}:${message.timestamp}:${message.customType}`;
+  }
+
+  if (message.role === "bashExecution") {
+    return `${message.role}:${message.timestamp}:${message.command}`;
+  }
+
+  return `${message.role}:${message.timestamp}`;
 }

@@ -10,10 +10,7 @@ export interface AgentThreadModelSummary {
   name: string;
 }
 
-export interface AgentThreadViewState {
-  threadPath: string;
-  messages: AgentThreadMessages;
-  streamMessage: AgentThreadStreamMessage;
+export interface AgentThreadMetaState {
   isStreaming: boolean;
   steeringQueue: string[];
   followUpQueue: string[];
@@ -21,6 +18,12 @@ export interface AgentThreadViewState {
   followUpMode: AgentSession["followUpMode"];
   model: AgentThreadModelSummary | null;
   thinkingLevel: AgentThreadThinkingLevel;
+}
+
+export interface AgentThreadViewState extends AgentThreadMetaState {
+  threadPath: string;
+  messages: AgentThreadMessages;
+  streamMessage: AgentThreadStreamMessage;
 }
 
 export type AgentThreadWatchUpdate =
@@ -33,14 +36,14 @@ export type AgentThreadWatchUpdate =
       kind: "event";
       seq: number;
       event: AgentSessionEvent;
-      state: AgentThreadViewState;
+      meta: AgentThreadMetaState;
     };
 
 export type AgentThreadDeliveryMode = "auto" | "steer" | "followUp";
 
 export interface AgentThreadSendResult {
   delivery: "prompt" | "steer" | "followUp";
-  state: AgentThreadViewState;
+  meta: AgentThreadMetaState;
 }
 
 export interface AgentThreadAbortResult {
@@ -48,5 +51,5 @@ export interface AgentThreadAbortResult {
     steering: string[];
     followUp: string[];
   };
-  state: AgentThreadViewState;
+  meta: AgentThreadMetaState;
 }

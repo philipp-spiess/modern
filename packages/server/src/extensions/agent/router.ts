@@ -2,7 +2,7 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { os } from "@orpc/server";
 import * as z from "zod";
 import { listOpenWorkspaces } from "../../state";
-import { getThreadRuntime, getThreadViewState } from "./runtime";
+import { createThreadRuntimeForWorkspace, getThreadMetaState, getThreadRuntime, getThreadViewState } from "./runtime";
 import { listThreadsForWorkspace, type WorkspaceThreads } from "./threads";
 import type {
   AgentThreadAbortResult,
@@ -19,6 +19,15 @@ const threadSendInputSchema = z.object({
   threadPath: z.string().min(1),
   text: z.string().trim().min(1),
   delivery: z.enum(["auto", "steer", "followUp"]).optional(),
+});
+
+const threadCreateInputSchema = z.object({
+  cwd: z.string().min(1),
+});
+
+export const createThread = os.input(threadCreateInputSchema).handler(async ({ input }) => {
+  const runtime = await createThreadRuntimeForWorkspace(input.cwd);
+  return { threadPath: runtime.threadPath };
 });
 
 export const listWorkspaceThreads = os
@@ -68,7 +77,7 @@ export const watchThread = os.input(threadInputSchema).handler(async function* (
       kind: "event",
       seq: seq++,
       event,
-      state: getThreadViewState(runtime),
+      meta: getThreadMetaState(runtime),
     });
 
     if (!resolve) {
@@ -120,7 +129,7 @@ export const sendThreadMessage = os.input(threadSendInputSchema).handler(async (
 
   return {
     delivery,
-    state: getThreadViewState(runtime),
+    meta: getThreadMetaState(runtime),
   } satisfies AgentThreadSendResult;
 });
 
@@ -132,11 +141,12 @@ export const abortThread = os.input(threadInputSchema).handler(async ({ input })
 
   return {
     cleared,
-    state: getThreadViewState(runtime),
+    meta: getThreadMetaState(runtime),
   } satisfies AgentThreadAbortResult;
 });
 
 export const agentRouter = {
+  threadCreate: createThread,
   threadsList: listWorkspaceThreads,
   threadWatch: watchThread,
   threadSend: sendThreadMessage,

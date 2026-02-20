@@ -1,47 +1,82 @@
-import { useCallback, useState } from "react";
-import { Loader2, Send, Compass, ListPlus, Square, CornerDownLeft } from "lucide-react";
-import type { AgentThreadDeliveryMode } from "@diffs-io/server/src/extensions/agent/types";
-import type { ExtensionPanelProps } from "../../lib/extensions";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
+import type { AgentThreadDeliveryMode } from "@diffs-io/server/src/extensions/agent/types";
+import { useMutation } from "@tanstack/react-query";
+import { CornerDownLeft, ListPlus, Loader2, Compass, Send, Square } from "lucide-react";
+import { useCallback, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
-import { useAgentThread } from "./use-agent-thread";
-import { MessageList, SteeringQueueIndicator, FollowUpQueueIndicator } from "./messages";
+import type { ExtensionPanelProps } from "../../lib/extensions";
+import { queryClient } from "../../lib/query-client";
+import { client } from "../../lib/rpc";
+import { openWorkspaceWithThread } from "../../lib/workspace";
 import {
   Queue,
-  QueueSection,
-  QueueSectionTrigger,
-  QueueSectionContent,
   QueueItem,
-  QueueItemIndicator,
   QueueItemContent,
+  QueueItemIndicator,
+  QueueSection,
+  QueueSectionContent,
+  QueueSectionTrigger,
 } from "./components/queue";
+import { FollowUpQueueIndicator, MessageList, SteeringQueueIndicator } from "./messages";
+import { useAgentThread } from "./use-agent-thread";
 
 interface AgentChatPanelState {
   threadPath?: string;
+  mode?: "draft";
 }
 
-export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatPanelState>) {
+export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelProps<AgentChatPanelState>) {
   const threadPath = state.threadPath;
+  const isDraftThread = state.mode === "draft" || !threadPath;
+
   const [draft, setDraft] = useState("");
-  const thread = useAgentThread(threadPath);
+  const thread = useAgentThread(isDraftThread ? undefined : threadPath);
   const { contentRef, isAtBottom, scrollRef, scrollToBottom } = useStickToBottom({
     initial: "instant",
     resize: "instant",
   });
 
-  const isStreaming = Boolean(thread.state?.isStreaming);
-  const disabled = thread.isSending || thread.isAborting || !threadPath;
+  const createThreadFromDraftMutation = useMutation({
+    mutationFn: async (text: string) => {
+      if (!workspaceCwd) {
+        throw new Error("Cannot create a thread without an active workspace.");
+      }
+
+      const created = await client.agent.threadCreate({ cwd: workspaceCwd });
+      await openWorkspaceWithThread(workspaceCwd, created.threadPath, "New Thread");
+      await client.agent.threadSend({
+        threadPath: created.threadPath,
+        text,
+        delivery: "auto",
+      });
+
+      void queryClient.invalidateQueries({ queryKey: ["agent", "threadsList"] });
+    },
+  });
+
+  const isStreaming = !isDraftThread && Boolean(thread.state?.isStreaming);
+  const disabled =
+    thread.isSending || thread.isAborting || createThreadFromDraftMutation.isPending || (!isDraftThread && !threadPath);
 
   const send = useCallback(
     async (delivery: AgentThreadDeliveryMode) => {
       const text = draft.trim();
-      if (!text) return;
+      if (!text) {
+        return;
+      }
+
       setDraft("");
       void scrollToBottom("smooth");
+
+      if (isDraftThread) {
+        await createThreadFromDraftMutation.mutateAsync(text);
+        return;
+      }
+
       await thread.send(text, delivery);
     },
-    [draft, scrollToBottom, thread],
+    [createThreadFromDraftMutation, draft, isDraftThread, scrollToBottom, thread],
   );
 
   const handleKeyDown = useCallback(
@@ -54,27 +89,26 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
     [send],
   );
 
-  if (!threadPath) {
-    return <div className="size-full p-4 text-sm text-white/60">Missing thread path.</div>;
-  }
-
-  const steeringQueue = thread.state?.steeringQueue ?? [];
-  const followUpQueue = thread.state?.followUpQueue ?? [];
+  const steeringQueue = !isDraftThread ? (thread.state?.steeringQueue ?? []) : [];
+  const followUpQueue = !isDraftThread ? (thread.state?.followUpQueue ?? []) : [];
   const hasQueued = steeringQueue.length > 0 || followUpQueue.length > 0;
+  const error = (createThreadFromDraftMutation.error ?? thread.error ?? null) as Error | null;
 
   return (
     <div className="flex size-full flex-col">
-      {/* Error banner */}
-      {thread.error && (
+      {error && (
         <div className="mx-3 mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-          {thread.error.message}
+          {error.message}
         </div>
       )}
 
-      {/* Messages area */}
       <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
         <div ref={contentRef} className="flex flex-col pb-4">
-          {thread.isLoading ? (
+          {isDraftThread ? (
+            <div className="flex flex-1 items-center justify-center py-10 text-center text-sm text-white/40">
+              Send your first message to start this thread.
+            </div>
+          ) : thread.isLoading ? (
             <div className="flex items-center gap-2 py-8 text-sm text-white/40">
               <Loader2 className="size-4 animate-spin" />
               Loading thread…
@@ -86,10 +120,8 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
                 streamMessage={thread.state.streamMessage}
                 isStreaming={isStreaming}
               />
-              {/* Queue indicators */}
               <SteeringQueueIndicator items={steeringQueue} />
               <FollowUpQueueIndicator items={followUpQueue} />
-              {/* Streaming indicator */}
               {isStreaming && !thread.state.streamMessage && (
                 <div className="flex items-center gap-2 py-3 text-xs text-white/30">
                   <span className="size-1.5 animate-pulse rounded-full bg-white/40" />
@@ -101,7 +133,6 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
         </div>
       </div>
 
-      {/* Scroll-to-bottom indicator */}
       {!isAtBottom && (
         <div className="relative z-10 -mt-10 flex justify-center">
           <button
@@ -116,7 +147,6 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
         </div>
       )}
 
-      {/* Queue display */}
       {hasQueued && (
         <div className="px-3 pt-2">
           <Queue>
@@ -162,7 +192,6 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
         </div>
       )}
 
-      {/* Input area (AI Elements PromptInput pattern) */}
       <div className="border-t border-white/8 p-3">
         <form
           onSubmit={(e) => {
@@ -175,11 +204,16 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
               value={draft}
               onChange={(e) => setDraft(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isStreaming ? "Steer or queue a follow-up…" : "Send a message…"}
+              placeholder={
+                createThreadFromDraftMutation.isPending
+                  ? "Creating thread…"
+                  : isStreaming
+                    ? "Steer or queue a follow-up…"
+                    : "Send a message…"
+              }
               className="field-sizing-content max-h-36 min-h-10"
             />
             <InputGroupAddon align="block-end" className="justify-between">
-              {/* Left: delivery mode buttons (only during streaming) */}
               <div className="flex items-center gap-1">
                 {isStreaming && (
                   <>
@@ -205,7 +239,6 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
                 )}
               </div>
 
-              {/* Right: submit / abort */}
               <div className="flex items-center gap-1">
                 {isStreaming ? (
                   <>

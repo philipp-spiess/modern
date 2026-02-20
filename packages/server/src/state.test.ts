@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { __resetStateForTests, attachPanel, closeTab, detachPanel, Panel, state } from "./state";
+import {
+  __resetStateForTests,
+  attachPanel,
+  closeTab,
+  detachPanel,
+  getWorkspaceActiveThread,
+  Panel,
+  setWorkspaceActiveThread,
+  state,
+} from "./state";
 
 describe("tabs", () => {
   const workspace = "/tmp/diffs-state-test";
@@ -166,6 +175,52 @@ describe("tabs", () => {
       expect(storedPanel).toBeDefined();
       expect(storedPanel?.state).toEqual({ filePath: "/path/to/file.txt", cursor: { line: 10, col: 5 } });
       expect(storedPanel?.icon).toBe("file");
+    });
+  });
+
+  describe("workspace thread selection", () => {
+    test("stores the active thread for the active workspace", () => {
+      setWorkspaceActiveThread(workspace, {
+        kind: "existing",
+        threadPath: "threads/current.jsonl",
+        title: "Current Thread",
+      });
+
+      const thread = getWorkspaceActiveThread(workspace);
+      expect(thread).toEqual({
+        kind: "existing",
+        threadPath: `${workspace}/threads/current.jsonl`,
+        title: "Current Thread",
+      });
+
+      expect(state.activeThread.value).toEqual(thread);
+    });
+
+    test("stores draft thread selection", () => {
+      setWorkspaceActiveThread(workspace, {
+        kind: "draft",
+        title: "New Thread",
+      });
+
+      const thread = getWorkspaceActiveThread(workspace);
+      expect(thread).toEqual({
+        kind: "draft",
+        title: "New Thread",
+      });
+
+      expect(state.activeThread.value).toEqual(thread);
+    });
+
+    test("clears active thread when set to null", () => {
+      setWorkspaceActiveThread(workspace, {
+        kind: "existing",
+        threadPath: "threads/current.jsonl",
+      });
+
+      setWorkspaceActiveThread(workspace, null);
+
+      expect(getWorkspaceActiveThread(workspace)).toBeNull();
+      expect(state.activeThread.value).toBeNull();
     });
   });
 });
