@@ -11,11 +11,11 @@ export const schema = z
     editor: z
       .object({
         fontFamily: z.string().trim().min(1).default("JetBrains Mono"),
-        fontSize: z.number().int().min(8).max(48).default(12),
+        fontSize: z.number().int().min(8).max(48).default(14),
       })
       .default({
         fontFamily: "JetBrains Mono",
-        fontSize: 12,
+        fontSize: 14,
       }),
   })
   .strip();

@@ -47,7 +47,7 @@ describe("settings settings", () => {
 
     const updated = await settings.writeSettings(["editor", "fontSize"], 64);
 
-    expect(updated.editor.fontSize).toBe(12);
+    expect(updated.editor.fontSize).toBe(14);
     expect(updated.editor.fontFamily).toBe("JetBrains Mono");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
