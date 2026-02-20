@@ -10,10 +10,12 @@ import { settings, writeSettings } from "./settings";
 import {
   closeTab,
   getActiveWorkspaceCwd,
+  getWorkspaceExpansionMap,
   getWorkspacePanels,
   getWorkspaceTabs,
   listOpenWorkspaces,
   openWorkspace,
+  setWorkspaceExpanded,
   state,
   workspaceStateRevision,
 } from "./state";
@@ -73,10 +75,15 @@ export const filesQuickOpen = os
     return { hits };
   });
 
-const resolveWorkspaceState = () => ({
-  cwd: getActiveWorkspaceCwd(),
-  workspaces: listOpenWorkspaces(),
-});
+const resolveWorkspaceState = () => {
+  const workspaces = listOpenWorkspaces();
+
+  return {
+    cwd: getActiveWorkspaceCwd(),
+    workspaces,
+    expandedByWorkspace: getWorkspaceExpansionMap(workspaces),
+  };
+};
 
 export const workspaceCwd = os.handler(() => {
   return resolveWorkspaceState();
@@ -101,6 +108,18 @@ export const workspaceActivate = os
   )
   .handler(async ({ input: { cwd } }) => {
     await openWorkspace(cwd);
+    return resolveWorkspaceState();
+  });
+
+export const workspaceSetExpanded = os
+  .input(
+    z.object({
+      cwd: z.string(),
+      expanded: z.boolean(),
+    }),
+  )
+  .handler(async ({ input }) => {
+    await setWorkspaceExpanded(input.cwd, input.expanded);
     return resolveWorkspaceState();
   });
 
@@ -304,6 +323,7 @@ type AppRouter = {
     cwd: typeof workspaceCwd;
     open: typeof workspaceOpen;
     activate: typeof workspaceActivate;
+    setExpanded: typeof workspaceSetExpanded;
   };
   tabs: {
     watch: typeof tabsWatch;
@@ -339,6 +359,7 @@ export const router: AppRouter = {
     cwd: workspaceCwd,
     open: workspaceOpen,
     activate: workspaceActivate,
+    setExpanded: workspaceSetExpanded,
   },
   tabs: {
     watch: tabsWatch,

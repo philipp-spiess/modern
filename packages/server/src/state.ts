@@ -74,6 +74,8 @@ interface WorkspaceSession {
 
 const WORKSPACES_STORAGE_SCOPE = "core:workspace-registry";
 const WORKSPACES_STORAGE_KEY = "open";
+const WORKSPACE_SIDEBAR_STORAGE_SCOPE = "core:workspace-sidebar";
+const WORKSPACE_SIDEBAR_COLLAPSED_KEY = "collapsed";
 
 const workspaceSessions = new Map<string, WorkspaceSession>();
 
@@ -115,11 +117,25 @@ function loadPersistedWorkspaces(): string[] {
   return normalizeWorkspaceList(stored);
 }
 
+function loadPersistedCollapsedWorkspaces(): Set<string> {
+  const stored = getGlobal<string[]>(WORKSPACE_SIDEBAR_STORAGE_SCOPE, WORKSPACE_SIDEBAR_COLLAPSED_KEY, []);
+  return new Set(normalizeWorkspaceList(stored));
+}
+
 async function persistOpenWorkspaces(workspaces: readonly string[]): Promise<void> {
   await setGlobal(WORKSPACES_STORAGE_SCOPE, WORKSPACES_STORAGE_KEY, [...workspaces]);
 }
 
+async function persistCollapsedWorkspaces(collapsedWorkspaces: ReadonlySet<string>): Promise<void> {
+  await setGlobal(
+    WORKSPACE_SIDEBAR_STORAGE_SCOPE,
+    WORKSPACE_SIDEBAR_COLLAPSED_KEY,
+    [...collapsedWorkspaces].sort((a, b) => a.localeCompare(b)),
+  );
+}
+
 const initialOpenWorkspaces = loadPersistedWorkspaces();
+let collapsedWorkspaces = loadPersistedCollapsedWorkspaces();
 
 export const state: {
   workspaces: Signal<Workspaces>;
@@ -144,6 +160,38 @@ export function getActiveWorkspaceCwd(): string | null {
 
 export function listOpenWorkspaces(): readonly string[] {
   return state.workspaces.value.open;
+}
+
+export function getWorkspaceExpansionMap(workspaces: readonly string[] = listOpenWorkspaces()): Record<string, boolean> {
+  const expandedByWorkspace: Record<string, boolean> = {};
+
+  for (const cwd of workspaces) {
+    const resolvedCwd = path.resolve(cwd);
+    expandedByWorkspace[resolvedCwd] = !collapsedWorkspaces.has(resolvedCwd);
+  }
+
+  return expandedByWorkspace;
+}
+
+export async function setWorkspaceExpanded(cwd: string, expanded: boolean): Promise<void> {
+  const resolvedCwd = path.resolve(cwd);
+  const nextCollapsedWorkspaces = new Set(collapsedWorkspaces);
+
+  if (expanded) {
+    nextCollapsedWorkspaces.delete(resolvedCwd);
+  } else {
+    nextCollapsedWorkspaces.add(resolvedCwd);
+  }
+
+  const changed =
+    nextCollapsedWorkspaces.size !== collapsedWorkspaces.size ||
+    [...nextCollapsedWorkspaces].some((value) => !collapsedWorkspaces.has(value));
+  if (!changed) {
+    return;
+  }
+
+  await persistCollapsedWorkspaces(nextCollapsedWorkspaces);
+  collapsedWorkspaces = nextCollapsedWorkspaces;
 }
 
 function withActiveWorkspace(cwd: string): Workspaces {
@@ -400,6 +448,7 @@ export function __resetStateForTests() {
   state.commands.value = new Map();
   state.panels.value = new Map();
   state.tabs.value = { groups: [] };
+  collapsedWorkspaces = new Set();
   shutdownStorage();
 }
 

@@ -29,3 +29,12 @@ export async function activateWorkspace(cwd: string) {
     console.error("Failed to activate workspace:", error);
   }
 }
+
+export async function setWorkspaceExpanded(cwd: string, expanded: boolean) {
+  try {
+    const workspaceState = await client.workspace.setExpanded({ cwd, expanded });
+    syncWorkspaceState(workspaceState);
+  } catch (error) {
+    console.error("Failed to persist workspace expansion:", error);
+  }
+}

@@ -73,6 +73,7 @@ function App() {
 
   const cwd = workspaceData?.cwd;
   const workspaces = workspaceData?.workspaces ?? [];
+  const expandedByWorkspace = workspaceData?.expandedByWorkspace ?? {};
   const [mountedWorkspaces, setMountedWorkspaces] = useState<string[]>(() => (cwd ? [cwd] : []));
 
   if (cwd && !mountedWorkspaces.includes(cwd)) {
@@ -90,7 +91,7 @@ function App() {
         style={layoutStyle}
         className="grid flex-1 grid-cols-[minmax(120px,var(--sidebar-width))_auto_1fr] overflow-hidden"
       >
-        <Sidebar activeCwd={cwd} workspaces={workspaces} />
+        <Sidebar activeCwd={cwd} workspaces={workspaces} expandedByWorkspace={expandedByWorkspace} />
 
         <div className="group relative h-full w-px select-none">
           <div className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-px -translate-x-1/2 rounded bg-white/0 transition-all duration-150 ease-in-out group-hover:w-[3px] group-hover:bg-white/20 group-active:bg-white/20" />

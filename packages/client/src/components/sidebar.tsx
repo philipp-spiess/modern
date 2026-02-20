@@ -12,9 +12,9 @@ import {
   SquareMinus,
   SquarePlus,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { client, orpc } from "../lib/rpc";
-import { activateWorkspace, openWorkspace } from "../lib/workspace";
+import { activateWorkspace, openWorkspace, setWorkspaceExpanded } from "../lib/workspace";
 import { basename, dirname } from "../utils/path";
 
 const noFiles: StatusFile[] = [];
@@ -22,9 +22,10 @@ const noFiles: StatusFile[] = [];
 type SidebarProps = {
   activeCwd: string;
   workspaces: readonly string[];
+  expandedByWorkspace: Record<string, boolean>;
 };
 
-export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
+export default function Sidebar({ activeCwd, workspaces, expandedByWorkspace }: SidebarProps) {
   const { data } = useSuspenseQuery(
     orpc.git.statusWatch.experimental_liveOptions({
       context: { cache: true },
@@ -103,6 +104,14 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
     [activeCwd],
   );
 
+  const onToggleWorkspaceExpanded = useCallback(
+    async (cwd: string) => {
+      const expanded = expandedByWorkspace[cwd] ?? true;
+      await setWorkspaceExpanded(cwd, !expanded);
+    },
+    [expandedByWorkspace],
+  );
+
   const onOpenThread = useCallback(
     async (cwd: string, thread: ThreadSummary) => {
       await onActivateWorkspace(cwd);
@@ -143,8 +152,10 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
               <WorkspaceItem
                 key={cwd}
                 cwd={cwd}
+                expanded={expandedByWorkspace[cwd] ?? true}
                 threads={threadsByWorkspace.get(cwd) ?? []}
                 onActivate={onActivateWorkspace}
+                onToggleExpanded={onToggleWorkspaceExpanded}
                 onOpenThread={onOpenThread}
               />
             ))}
@@ -186,16 +197,19 @@ export default function Sidebar({ activeCwd, workspaces }: SidebarProps) {
 
 function WorkspaceItem({
   cwd,
+  expanded,
   threads,
   onActivate,
+  onToggleExpanded,
   onOpenThread,
 }: {
   cwd: string;
+  expanded: boolean;
   threads: ThreadSummary[];
   onActivate: (cwd: string) => Promise<void>;
+  onToggleExpanded: (cwd: string) => Promise<void>;
   onOpenThread: (cwd: string, thread: ThreadSummary) => Promise<void>;
 }) {
-  const [expanded, setExpanded] = useState(true);
   const FolderIcon = expanded ? FolderOpenIcon : FolderClosedIcon;
 
   return (
@@ -204,7 +218,7 @@ function WorkspaceItem({
         type="button"
         onClick={() => {
           void onActivate(cwd);
-          setExpanded((prev) => !prev);
+          void onToggleExpanded(cwd);
         }}
         className="hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white"
       >

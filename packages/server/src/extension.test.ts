@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createExtension, diffs, executeCommand, listRegisteredCommands } from "./extension";
-import { __resetStateForTests, state } from "./state";
+import { __resetStateForTests, getWorkspaceExpansionMap, setWorkspaceExpanded, state } from "./state";
 
 describe("extension api", () => {
   let tempRoot: string;
@@ -81,6 +81,31 @@ describe("extension api", () => {
       expect(diffs.storage.get("token", "fallback")).toBe("fallback");
     });
     await readerOtherExtension.activate({ extensionId: "ext.beta", cwd: workspaceA });
+  });
+
+  test("workspace expansion defaults to expanded and persists toggles", async () => {
+    const workspaceA = await createWorkspace(tempRoot, "ws-expanded-a");
+    const workspaceB = await createWorkspace(tempRoot, "ws-expanded-b");
+    state.workspaces.value = { active: workspaceA, open: [workspaceA, workspaceB] };
+
+    expect(getWorkspaceExpansionMap()).toEqual({
+      [workspaceA]: true,
+      [workspaceB]: true,
+    });
+
+    await setWorkspaceExpanded(workspaceA, false);
+
+    expect(getWorkspaceExpansionMap()).toEqual({
+      [workspaceA]: false,
+      [workspaceB]: true,
+    });
+
+    await setWorkspaceExpanded(workspaceA, true);
+
+    expect(getWorkspaceExpansionMap()).toEqual({
+      [workspaceA]: true,
+      [workspaceB]: true,
+    });
   });
 
   test("workspace.openTextDocument reads files and supports ranges", async () => {
