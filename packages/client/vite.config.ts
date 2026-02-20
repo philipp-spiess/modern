@@ -13,6 +13,7 @@ export default defineConfig(async () => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    dedupe: ["react", "react-dom"],
   },
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
