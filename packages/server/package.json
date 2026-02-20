@@ -15,17 +15,13 @@
 		"@types/node": "^24.10.0"
 	},
 	"dependencies": {
-		"@ai-sdk/anthropic": "^2.0.45",
-		"@ai-sdk/openai": "^2.0.71",
 		"@mariozechner/pi-coding-agent": "^0.52.12",
 		"@openai/codex-sdk": "^0.63.0",
-		"@openrouter/ai-sdk-provider": "^1.2.5",
 		"@orpc/server": "^1.11.3",
 		"@preact/signals-core": "^1.12.1",
 		"@truto/sqlite-builder": "^1.0.4",
 		"@vscode/ripgrep": "^1.17.0",
 		"comment-json": "^4.2.3",
-		"ai-sdk-provider-claude-code": "^2.1.0",
 		"diff": "^8.0.2",
 		"fuzzysearch": "^1.0.3",
 		"jsonrepair": "^3.13.1",
