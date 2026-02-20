@@ -204,7 +204,6 @@ function AssistantMessageView({
           return null;
         })}
       </MessageContent>
-      {message.model && !isStreaming && <div className="mt-1 text-[11px] text-white/25">{message.model}</div>}
     </Message>
   );
 }

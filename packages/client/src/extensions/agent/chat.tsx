@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useCallback, useState } from "react";
 import { Loader2, Send, Compass, ListPlus, Square, CornerDownLeft } from "lucide-react";
 import type { AgentThreadDeliveryMode } from "@diffs-io/server/src/extensions/agent/types";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { useAgentThread } from "./use-agent-thread";
 import { MessageList, SteeringQueueIndicator, FollowUpQueueIndicator } from "./messages";
 import {
@@ -24,37 +25,23 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
   const threadPath = state.threadPath;
   const [draft, setDraft] = useState("");
   const thread = useAgentThread(threadPath);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const [userScrolled, setUserScrolled] = useState(false);
+  const { contentRef, isAtBottom, scrollRef, scrollToBottom } = useStickToBottom({
+    initial: "instant",
+    resize: "instant",
+  });
 
   const isStreaming = Boolean(thread.state?.isStreaming);
   const disabled = thread.isSending || thread.isAborting || !threadPath;
-
-  // Auto-scroll to bottom when new messages arrive or streaming updates
-  useEffect(() => {
-    if (!userScrolled) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [thread.state?.messages, thread.state?.streamMessage, userScrolled]);
-
-  // Detect manual scroll
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    setUserScrolled(!isNearBottom);
-  }, []);
 
   const send = useCallback(
     async (delivery: AgentThreadDeliveryMode) => {
       const text = draft.trim();
       if (!text) return;
       setDraft("");
-      setUserScrolled(false);
+      void scrollToBottom("smooth");
       await thread.send(text, delivery);
     },
-    [draft, thread],
+    [draft, scrollToBottom, thread],
   );
 
   const handleKeyDown = useCallback(
@@ -85,48 +72,42 @@ export default function AgentChatPanel({ state }: ExtensionPanelProps<AgentChatP
       )}
 
       {/* Messages area */}
-      <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto scroll-smooth px-4">
-        {thread.isLoading ? (
-          <div className="flex items-center gap-2 py-8 text-sm text-white/40">
-            <Loader2 className="size-4 animate-spin" />
-            Loading thread…
-          </div>
-        ) : thread.state ? (
-          <>
-            {/* Model info header */}
-            {thread.state.model && (
-              <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-white/5 bg-[var(--background)] py-2 text-[11px] text-white/30">
-                <span className="rounded bg-white/8 px-1.5 py-0.5 font-medium">{thread.state.model.name}</span>
-              </div>
-            )}
-            <MessageList
-              messages={thread.state.messages}
-              streamMessage={thread.state.streamMessage}
-              isStreaming={isStreaming}
-            />
-            {/* Queue indicators */}
-            <SteeringQueueIndicator items={steeringQueue} />
-            <FollowUpQueueIndicator items={followUpQueue} />
-            {/* Streaming indicator */}
-            {isStreaming && !thread.state.streamMessage && (
-              <div className="flex items-center gap-2 py-3 text-xs text-white/30">
-                <span className="size-1.5 animate-pulse rounded-full bg-white/40" />
-                Thinking…
-              </div>
-            )}
-          </>
-        ) : null}
-        <div ref={bottomRef} className="h-4" />
+      <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
+        <div ref={contentRef} className="flex flex-col pb-4">
+          {thread.isLoading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-white/40">
+              <Loader2 className="size-4 animate-spin" />
+              Loading thread…
+            </div>
+          ) : thread.state ? (
+            <>
+              <MessageList
+                messages={thread.state.messages}
+                streamMessage={thread.state.streamMessage}
+                isStreaming={isStreaming}
+              />
+              {/* Queue indicators */}
+              <SteeringQueueIndicator items={steeringQueue} />
+              <FollowUpQueueIndicator items={followUpQueue} />
+              {/* Streaming indicator */}
+              {isStreaming && !thread.state.streamMessage && (
+                <div className="flex items-center gap-2 py-3 text-xs text-white/30">
+                  <span className="size-1.5 animate-pulse rounded-full bg-white/40" />
+                  Thinking…
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
       </div>
 
       {/* Scroll-to-bottom indicator */}
-      {userScrolled && (
+      {!isAtBottom && (
         <div className="relative z-10 -mt-10 flex justify-center">
           <button
             type="button"
             onClick={() => {
-              setUserScrolled(false);
-              bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+              void scrollToBottom("smooth");
             }}
             className="rounded-full border border-white/15 bg-neutral-900/90 px-3 py-1 text-xs text-white/60 shadow-lg backdrop-blur-sm transition-colors hover:text-white/80"
           >
