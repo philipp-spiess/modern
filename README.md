@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src-tauri/icons/128x128.png" width="48" height="48" alt="diffs" />
+  <img src="src-tauri/icons/128x128.png" width="48" height="48" alt="Modern" />
 </p>
 
-<h1 align="center">diffs</h1>
+<h1 align="center">Modern</h1>
 
 <p align="center">
   A desktop coding environment with a built-in AI agent, file editor, diff review, and terminal.<br />
@@ -21,8 +21,8 @@
 ### Setup
 
 ```bash
-git clone https://github.com/user/diffs.git
-cd diffs
+git clone https://github.com/philipp-spiess/modern.git
+cd modern
 bun install
 
 # Build the server sidecar (required once, and after server changes)
