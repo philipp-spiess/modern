@@ -1,4 +1,4 @@
-import { File, PatchDiff } from "@pierre/diffs/react";
+import { File, PatchDiff, WorkerPoolContextProvider } from "@pierre/diffs/react";
 import type {
   AssistantMessage,
   TextContent,
@@ -74,12 +74,25 @@ export const MessageList = memo(function MessageList({
   const visibleMessages = messages.filter((m) => m.role !== "toolResult");
 
   return (
-    <div className="flex flex-col gap-1">
-      {visibleMessages.map((msg, i) => (
-        <MessageView key={i} message={msg} resultMap={resultMap} isStreamingMsg={false} />
-      ))}
-      {streamMessage && <MessageView message={streamMessage} resultMap={resultMap} isStreamingMsg={isStreaming} />}
-    </div>
+    <WorkerPoolContextProvider
+      poolOptions={{
+        workerFactory: () =>
+          new Worker(new URL("@pierre/diffs/worker/worker.js", import.meta.url), { type: "module" }),
+        poolSize: 4,
+        totalASTLRUCacheSize: 100,
+      }}
+      highlighterOptions={{
+        theme: "vitesse-dark",
+        lineDiffType: "word-alt",
+      }}
+    >
+      <div className="flex flex-col gap-1">
+        {visibleMessages.map((msg, i) => (
+          <MessageView key={i} message={msg} resultMap={resultMap} isStreamingMsg={false} />
+        ))}
+        {streamMessage && <MessageView message={streamMessage} resultMap={resultMap} isStreamingMsg={isStreaming} />}
+      </div>
+    </WorkerPoolContextProvider>
   );
 });
 
