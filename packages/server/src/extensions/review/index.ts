@@ -1,25 +1,25 @@
 import path from "node:path";
-import { createExtension, diffs } from "../../extension";
+import { createExtension, modern } from "../../extension";
 import { createDisposable } from "../../utils/disposable";
 
-export const id = "diffs.review";
+export const id = "modern.review";
 
 export type DiffMode = "staged" | "worktree";
 
 export default createExtension(async () => {
-  const cwd = diffs.workspace.cwd;
+  const cwd = modern.workspace.cwd;
   if (!cwd) throw new Error("Workspace cwd is not available.");
 
   const disposables: Disposable[] = [];
-  type PanelHandle = ReturnType<typeof diffs.window.createReactPanel>;
+  type PanelHandle = ReturnType<typeof modern.window.createReactPanel>;
   const diffPanels = new Map<string, PanelHandle>();
 
   const register = <T extends (...args: any[]) => unknown>(
     command: string,
     handler: T,
-    options?: Parameters<typeof diffs.commands.registerCommand>[2],
+    options?: Parameters<typeof modern.commands.registerCommand>[2],
   ) => {
-    disposables.push(diffs.commands.registerCommand(command, handler, options));
+    disposables.push(modern.commands.registerCommand(command, handler, options));
   };
 
   const openDiff = (filePath: string, mode: DiffMode) => {
@@ -28,7 +28,7 @@ export default createExtension(async () => {
     if (!panel) {
       const filename = path.basename(filePath);
       const title = `${filename} (${mode === "staged" ? "Staged" : "Working Tree"})`;
-      panel = diffs.window.createReactPanel("review.diff", "review/diff-view.tsx", title);
+      panel = modern.window.createReactPanel("review.diff", "review/diff-view.tsx", title);
       panel.state = { path: filePath, mode };
       diffPanels.set(panelKey, panel);
     } else {

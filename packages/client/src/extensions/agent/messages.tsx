@@ -7,7 +7,7 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@mariozechner/pi-ai";
-import type { AgentThreadMessages, AgentThreadStreamMessage } from "@diffs-io/server/src/extensions/agent/types";
+import type { AgentThreadMessages, AgentThreadStreamMessage } from "@moderndev/server/src/extensions/agent/types";
 import { Compass, FilePlus, FileText, ListPlus, Pencil, Terminal as TerminalIcon, User } from "lucide-react";
 import { Component, type ReactNode, memo } from "react";
 
@@ -76,8 +76,7 @@ export const MessageList = memo(function MessageList({
   return (
     <WorkerPoolContextProvider
       poolOptions={{
-        workerFactory: () =>
-          new Worker(new URL("@pierre/diffs/worker/worker.js", import.meta.url), { type: "module" }),
+        workerFactory: () => new Worker(new URL("@pierre/diffs/worker/worker.js", import.meta.url), { type: "module" }),
         poolSize: 4,
         totalASTLRUCacheSize: 100,
       }}

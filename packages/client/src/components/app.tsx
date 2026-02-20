@@ -1,4 +1,4 @@
-import type { WorkspaceThreadSelection } from "@diffs-io/server/src/state";
+import type { WorkspaceThreadSelection } from "@moderndev/server/src/state";
 import { listen } from "@tauri-apps/api/event";
 import { Menu, MenuItem, Submenu, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { useSuspenseQuery } from "@tanstack/react-query";

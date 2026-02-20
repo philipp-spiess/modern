@@ -304,7 +304,7 @@ fn build_shell_command(options: &SpawnOptions) -> CommandBuilder {
 
     builder.env("TERM", "xterm-256color");
     builder.env("COLORTERM", "truecolor");
-    builder.env("TERM_PROGRAM", "diffs");
+    builder.env("TERM_PROGRAM", "modern");
     builder.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
     builder.env("SHELL", &shell_path);
     builder.env("FORCE_COLOR", "1");

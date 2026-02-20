@@ -1,8 +1,8 @@
 import path from "node:path";
-import { createExtension, diffs } from "../../extension";
+import { createExtension, modern } from "../../extension";
 import { createDisposable } from "../../utils/disposable";
 
-export const id = "diffs.agent";
+export const id = "modern.agent";
 
 interface OpenPanelArgs {
   threadPath: string;
@@ -15,26 +15,26 @@ interface AgentPanelState {
 
 export default createExtension(() => {
   const disposables: Disposable[] = [];
-  type PanelHandle = ReturnType<typeof diffs.window.createReactPanel>;
+  type PanelHandle = ReturnType<typeof modern.window.createReactPanel>;
   const threadPanels = new Map<string, PanelHandle>();
 
   const register = <T extends (...args: any[]) => unknown>(
     command: string,
     handler: T,
-    options?: Parameters<typeof diffs.commands.registerCommand>[2],
+    options?: Parameters<typeof modern.commands.registerCommand>[2],
   ) => {
-    disposables.push(diffs.commands.registerCommand(command, handler, options));
+    disposables.push(modern.commands.registerCommand(command, handler, options));
   };
 
   const openPanel = (input: OpenPanelArgs | string) => {
     const args = normalizeOpenPanelArgs(input);
-    const threadPath = path.resolve(diffs.workspace.cwd, args.threadPath);
+    const threadPath = path.resolve(modern.workspace.cwd, args.threadPath);
 
     let panel = threadPanels.get(threadPath);
     const title = resolveTitle(args.title, threadPath);
 
     if (!panel) {
-      panel = diffs.window.createReactPanel("agent.chat", "agent/chat.tsx", title, "message-square");
+      panel = modern.window.createReactPanel("agent.chat", "agent/chat.tsx", title, "message-square");
       threadPanels.set(threadPath, panel);
     } else {
       panel.title = title;

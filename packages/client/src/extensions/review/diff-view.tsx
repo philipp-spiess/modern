@@ -8,11 +8,11 @@ import { createHighlighter } from "shiki";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { orpc } from "../../lib/rpc";
 import { useSettings } from "../../lib/settings";
-import diffsDarkTheme from "../files/theme.json";
+import modernDarkTheme from "../files/theme.json";
 
 const highlighterPromise = createHighlighter({
   langs: [],
-  themes: [diffsDarkTheme as any],
+  themes: [modernDarkTheme as any],
 });
 
 type DiffMode = "staged" | "worktree";
@@ -92,7 +92,7 @@ export default function DiffViewPanel({ state }: ExtensionPanelProps<DiffViewSta
         }
       }
 
-      const theme = highlighter.getTheme(diffsDarkTheme.name);
+      const theme = highlighter.getTheme(modernDarkTheme.name);
 
       if (disposed) return;
 
@@ -101,7 +101,7 @@ export default function DiffViewPanel({ state }: ExtensionPanelProps<DiffViewSta
         shiki({
           highlighter: highlighterPromise,
           language,
-          theme: diffsDarkTheme.name,
+          theme: modernDarkTheme.name,
         }),
         drawSelection(),
         EditorView.darkTheme.of(theme.type === "dark"),

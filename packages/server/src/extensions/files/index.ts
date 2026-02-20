@@ -1,25 +1,25 @@
 import path from "node:path";
 import { URI } from "vscode-uri";
-import { createExtension, diffs } from "../../extension";
+import { createExtension, modern } from "../../extension";
 import { createDisposable } from "../../utils/disposable";
 import { saveFile } from "./shared";
 
-export const id = "diffs.files";
+export const id = "modern.files";
 
 export default createExtension(async () => {
-  const cwd = diffs.workspace.cwd;
+  const cwd = modern.workspace.cwd;
   if (!cwd) throw new Error("Workspace cwd is not available.");
 
   const disposables: Disposable[] = [];
-  type PanelHandle = ReturnType<typeof diffs.window.createReactPanel>;
+  type PanelHandle = ReturnType<typeof modern.window.createReactPanel>;
   const editorPanels = new Map<string, PanelHandle>();
 
   const register = <T extends (...args: any[]) => unknown>(
     command: string,
     handler: T,
-    options?: Parameters<typeof diffs.commands.registerCommand>[2],
+    options?: Parameters<typeof modern.commands.registerCommand>[2],
   ) => {
-    disposables.push(diffs.commands.registerCommand(command, handler, options));
+    disposables.push(modern.commands.registerCommand(command, handler, options));
   };
 
   const openDocument = (file: string) => {
@@ -27,7 +27,7 @@ export default createExtension(async () => {
     let panel = editorPanels.get(uri.toString());
     if (!panel) {
       const title = path.basename(uri.fsPath) || "Untitled";
-      panel = diffs.window.createReactPanel("files.editor", "files/editor.tsx", title);
+      panel = modern.window.createReactPanel("files.editor", "files/editor.tsx", title);
       panel.state = { uri: uri.toString() };
       editorPanels.set(uri.toString(), panel);
     } else {

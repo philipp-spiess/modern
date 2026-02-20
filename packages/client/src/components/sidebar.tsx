@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { type ThreadSummary, type WorkspaceThreads } from "@diffs-io/server/src/extensions/agent/threads";
-import type { WorkspaceThreadSelection } from "@diffs-io/server/src/state";
+import { type ThreadSummary, type WorkspaceThreads } from "@moderndev/server/src/extensions/agent/threads";
+import type { WorkspaceThreadSelection } from "@moderndev/server/src/state";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import {
   FolderClosedIcon,

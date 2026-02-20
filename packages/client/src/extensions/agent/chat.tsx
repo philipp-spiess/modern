@@ -1,6 +1,6 @@
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
-import type { AgentThreadDeliveryMode } from "@diffs-io/server/src/extensions/agent/types";
+import type { AgentThreadDeliveryMode } from "@moderndev/server/src/extensions/agent/types";
 import { useMutation } from "@tanstack/react-query";
 import { CornerDownLeft, ListPlus, Loader2, Compass, Send, Square } from "lucide-react";
 import { useCallback, useState } from "react";

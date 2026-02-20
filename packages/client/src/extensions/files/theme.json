@@ -187,8 +187,8 @@
     "welcomePage.buttonBackground": "#2f363d",
     "welcomePage.buttonHoverBackground": "#444d56"
   },
-  "displayName": "Diffs Dark (by Vitesse Dark)",
-  "name": "diffs-dark",
+  "displayName": "Modern Dark (by Vitesse Dark)",
+  "name": "modern-dark",
   "semanticHighlighting": true,
   "semanticTokenColors": {
     "class": "#6872ab",

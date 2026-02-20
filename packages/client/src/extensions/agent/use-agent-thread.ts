@@ -6,7 +6,7 @@ import type {
   AgentThreadStreamMessage,
   AgentThreadViewState,
   AgentThreadWatchUpdate,
-} from "@diffs-io/server/src/extensions/agent/types";
+} from "@moderndev/server/src/extensions/agent/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { queryClient } from "../../lib/query-client";

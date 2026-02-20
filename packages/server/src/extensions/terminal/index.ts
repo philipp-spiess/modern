@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
-import { createExtension, diffs } from "../../extension";
+import { createExtension, modern } from "../../extension";
 import { createDisposable } from "../../utils/disposable";
 
-export const id = "diffs.terminal";
+export const id = "modern.terminal";
 
 interface TerminalSession {
   terminalId: string;
@@ -12,16 +12,16 @@ interface TerminalSession {
 
 export default createExtension(() => {
   const disposables: Disposable[] = [];
-  type PanelHandle = ReturnType<typeof diffs.window.createReactPanel>;
+  type PanelHandle = ReturnType<typeof modern.window.createReactPanel>;
   const terminalPanels = new Map<string, PanelHandle>();
   let terminalCounter = 0;
 
   const register = <T extends (...args: any[]) => unknown>(
     command: string,
     handler: T,
-    options?: Parameters<typeof diffs.commands.registerCommand>[2],
+    options?: Parameters<typeof modern.commands.registerCommand>[2],
   ) => {
-    disposables.push(diffs.commands.registerCommand(command, handler, options));
+    disposables.push(modern.commands.registerCommand(command, handler, options));
   };
 
   const createTerminal = (cwd?: string): TerminalSession => {
@@ -34,10 +34,10 @@ export default createExtension(() => {
       createdAt: Date.now(),
     };
 
-    const panel = diffs.window.createReactPanel("terminal", "terminal/panel.tsx", title, "terminal-square");
+    const panel = modern.window.createReactPanel("terminal", "terminal/panel.tsx", title, "terminal-square");
     panel.state = {
       terminalId,
-      cwd: cwd ?? diffs.workspace.cwd,
+      cwd: cwd ?? modern.workspace.cwd,
     };
     terminalPanels.set(terminalId, panel);
 

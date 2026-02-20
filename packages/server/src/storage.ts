@@ -39,9 +39,9 @@ export function shutdownStorage(): void {
   activePath = undefined;
 }
 
-const DEFAULT_STATE_DIR = path.join(homedir(), ".diffs");
+const DEFAULT_STATE_DIR = path.join(homedir(), ".modern");
 const DEFAULT_STATE_DB = path.join(DEFAULT_STATE_DIR, "state.db");
-const GLOBAL_WORKSPACE = "__diffs_global__";
+const GLOBAL_WORKSPACE = "__modern_global__";
 
 let cachedDb: Database | undefined;
 let activePath: string | undefined;
@@ -116,13 +116,13 @@ function removeForWorkspace(scope: string, workspace: string, key: string): void
 
 function normalizeWorkspace(cwd: string): string {
   if (!cwd?.trim()) {
-    throw new Error("diffs.storage requires a cwd argument.");
+    throw new Error("storage API requires a cwd argument.");
   }
   return path.resolve(cwd);
 }
 
 function resolveStatePath(): string {
-  const override = process.env.DIFFS_STATE_PATH?.trim();
+  const override = process.env.MODERN_STATE_PATH?.trim() ?? process.env.DIFFS_STATE_PATH?.trim();
   if (override) {
     return path.isAbsolute(override) ? override : path.resolve(override);
   }

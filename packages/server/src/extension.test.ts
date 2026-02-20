@@ -2,20 +2,20 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createExtension, diffs, executeCommand, listRegisteredCommands } from "./extension";
+import { createExtension, modern, executeCommand, listRegisteredCommands } from "./extension";
 import { __resetStateForTests, getWorkspaceExpansionMap, setWorkspaceExpanded, state } from "./state";
 
 describe("extension api", () => {
   let tempRoot: string;
 
   beforeEach(async () => {
-    tempRoot = await mkdtemp(path.join(tmpdir(), "diffs-ext-"));
-    process.env.DIFFS_STATE_PATH = path.join(tempRoot, "state.db");
+    tempRoot = await mkdtemp(path.join(tmpdir(), "modern-ext-"));
+    process.env.MODERN_STATE_PATH = path.join(tempRoot, "state.db");
     __resetStateForTests();
   });
 
   afterEach(async () => {
-    delete process.env.DIFFS_STATE_PATH;
+    delete process.env.MODERN_STATE_PATH;
     await rm(tempRoot, { recursive: true, force: true });
   });
 
@@ -23,7 +23,7 @@ describe("extension api", () => {
     const workspace = await createWorkspace(tempRoot, "workspace-a");
 
     const extension = createExtension(() => {
-      return diffs.commands.registerCommand("example.hello", (name: string) => `hello ${name}`, {
+      return modern.commands.registerCommand("example.hello", (name: string) => `hello ${name}`, {
         title: "Say Hello",
       });
     });
@@ -33,18 +33,18 @@ describe("extension api", () => {
 
     expect(listRegisteredCommands()).toHaveLength(1);
 
-    expect(executeCommand("example.hello", "diffs")).resolves.toBe("hello diffs");
+    expect(executeCommand("example.hello", "modern")).resolves.toBe("hello modern");
 
     disposable?.[Symbol.dispose]();
 
-    expect(executeCommand("example.hello", "diffs")).rejects.toThrow(/not registered/);
+    expect(executeCommand("example.hello", "modern")).rejects.toThrow(/not registered/);
   });
 
   test("executeCommand requires an active workspace", async () => {
     const workspace = await createWorkspace(tempRoot, "workspace-exec");
 
     const extension = createExtension(() => {
-      return diffs.commands.registerCommand("example.needs-workspace", () => "ok");
+      return modern.commands.registerCommand("example.needs-workspace", () => "ok");
     });
 
     const disposable = await extension.activate({ extensionId: "example", cwd: workspace });
@@ -59,26 +59,26 @@ describe("extension api", () => {
     const workspaceB = await createWorkspace(tempRoot, "ws-b");
 
     const writer = createExtension(async () => {
-      await diffs.storage.set("token", "alpha");
-      expect(diffs.storage.keys()).toEqual(["token"]);
+      await modern.storage.set("token", "alpha");
+      expect(modern.storage.keys()).toEqual(["token"]);
     });
     await writer.activate({ extensionId: "ext.alpha", cwd: workspaceA });
 
     const readerSame = createExtension(() => {
-      expect(diffs.storage.keys()).toContain("token");
-      expect(diffs.storage.get<any>("token")).toBe("alpha");
+      expect(modern.storage.keys()).toContain("token");
+      expect(modern.storage.get<any>("token")).toBe("alpha");
     });
     await readerSame.activate({ extensionId: "ext.alpha", cwd: workspaceA });
 
     const readerOtherWorkspace = createExtension(() => {
-      expect(diffs.storage.keys()).toHaveLength(0);
-      expect(diffs.storage.get("token")).toBeUndefined();
+      expect(modern.storage.keys()).toHaveLength(0);
+      expect(modern.storage.get("token")).toBeUndefined();
     });
     await readerOtherWorkspace.activate({ extensionId: "ext.alpha", cwd: workspaceB });
 
     const readerOtherExtension = createExtension(() => {
-      expect(diffs.storage.keys()).toHaveLength(0);
-      expect(diffs.storage.get("token", "fallback")).toBe("fallback");
+      expect(modern.storage.keys()).toHaveLength(0);
+      expect(modern.storage.get("token", "fallback")).toBe("fallback");
     });
     await readerOtherExtension.activate({ extensionId: "ext.beta", cwd: workspaceA });
   });
@@ -113,7 +113,7 @@ describe("extension api", () => {
     await writeFile(path.join(workspace, "note.ts"), "line 1\nline 2\n");
 
     const extension = createExtension(async () => {
-      const doc = await diffs.workspace.openTextDocument("note.ts");
+      const doc = await modern.workspace.openTextDocument("note.ts");
       expect(doc.fileName.endsWith("note.ts")).toBe(true);
       expect(doc.languageId).toBe("typescript");
       expect(doc.getText()).toBe("line 1\nline 2\n");
@@ -131,8 +131,8 @@ describe("extension api", () => {
   test("window.createReactPanel returns disposable panels", async () => {
     const workspace = await createWorkspace(tempRoot, "ws-panel");
     const extension = createExtension(() => {
-      const panel = diffs.window.createReactPanel("diffs.panel", "./panel.tsx", "Sample Panel", "rocket");
-      expect(panel.viewType).toBe("diffs.panel");
+      const panel = modern.window.createReactPanel("modern.panel", "./panel.tsx", "Sample Panel", "rocket");
+      expect(panel.viewType).toBe("modern.panel");
       expect(panel.title).toBe("Sample Panel");
       panel.title = "New Title";
       expect(panel.title).toBe("New Title");
@@ -143,11 +143,11 @@ describe("extension api", () => {
     await extension.activate({ extensionId: "ext.window", cwd: workspace });
   });
 
-  test("diffs access outside context throws", () => {
+  test("modern access outside context throws", () => {
     expect(() => {
       // Accessing any property should raise because no context is active.
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      diffs.commands;
+      modern.commands;
     }).toThrow(/active extension context/);
   });
 });

@@ -119,16 +119,19 @@ interface TypedEventEmitter<Events extends Record<string, unknown> = Record<stri
 
 // The proxy routes every property access through AsyncLocalStorage to guarantee that
 // each extension sees its own scoped API instance even when multiple extensions run concurrently.
-export const diffs: ExtensionsApi = new Proxy({} as ExtensionsApi, {
+export const modern: ExtensionsApi = new Proxy({} as ExtensionsApi, {
   get(_target, key) {
     const ctx = extensionContext.getStore();
     if (!ctx) {
-      throw new Error("diffs API cannot be accessed outside of an active extension context.");
+      throw new Error("Extension API cannot be accessed outside of an active extension context.");
     }
     const value = ctx.api[key as keyof ExtensionsApi];
     return typeof value === "function" ? (value as any).bind(ctx.api) : value;
   },
 });
+
+// Backward-compatible alias for existing extensions.
+export const diffs = modern;
 
 export function createExtension<T>(activate: ExtensionActivate<T>): {
   activate: (options: ExtensionActivationOptions) => Promise<T | (T & Disposable)>;

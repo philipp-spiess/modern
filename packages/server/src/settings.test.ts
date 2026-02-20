@@ -8,8 +8,8 @@ let tempHome: string;
 let currentModule: typeof import("./settings") | null = null;
 
 beforeEach(async () => {
-  tempHome = await mkdtemp(path.join(tmpdir(), "diffs-settings-"));
-  process.env.DIFFS_SETTINGS_PATH = path.join(tempHome, "settings.json");
+  tempHome = await mkdtemp(path.join(tmpdir(), "modern-settings-"));
+  process.env.MODERN_SETTINGS_PATH = path.join(tempHome, "settings.json");
 });
 
 afterEach(async () => {
@@ -17,7 +17,7 @@ afterEach(async () => {
     currentModule.__stopSettingsWatcherForTests();
     currentModule = null;
   }
-  delete process.env.DIFFS_SETTINGS_PATH;
+  delete process.env.MODERN_SETTINGS_PATH;
   await rm(tempHome, { recursive: true, force: true });
 });
 

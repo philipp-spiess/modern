@@ -1,4 +1,4 @@
-import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@diffs-io/server/src/state";
+import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@moderndev/server/src/state";
 import { memo, useEffect, useMemo, useState } from "react";
 import AgentChatPanel from "../extensions/agent/chat";
 import { useHandle } from "../lib/use-handle";

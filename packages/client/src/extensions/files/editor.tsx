@@ -1,7 +1,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, lineNumbers, type KeyBinding } from "@codemirror/view";
-import type { LoadResult } from "@diffs-io/server/src/extensions/files";
+import type { LoadResult } from "@moderndev/server/src/extensions/files";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import shiki from "codemirror-shiki";
 import { useLayoutEffect, useRef } from "react";
@@ -11,11 +11,11 @@ import { toCodemirrorShortcut, type Binding } from "../../lib/keybindings";
 import { useKeybinding } from "../../lib/keybindings";
 import { type ExtensionPanelProps } from "../../lib/extensions";
 import { client, orpc } from "../../lib/rpc";
-import diffsDarkTheme from "./theme.json";
+import modernDarkTheme from "./theme.json";
 
 const highlighterPromise = createHighlighter({
   langs: [],
-  themes: [diffsDarkTheme as any],
+  themes: [modernDarkTheme as any],
 });
 
 export default function FileEditorPanel({ state }: ExtensionPanelProps<{ uri: string }>) {
@@ -56,7 +56,7 @@ export default function FileEditorPanel({ state }: ExtensionPanelProps<{ uri: st
       if (!highlighter.getLoadedLanguages().includes(language)) {
         await highlighter.loadLanguage(language as any);
       }
-      let theme = highlighter.getTheme(diffsDarkTheme.name);
+      let theme = highlighter.getTheme(modernDarkTheme.name);
 
       if (disposed) return;
 
@@ -98,7 +98,7 @@ export default function FileEditorPanel({ state }: ExtensionPanelProps<{ uri: st
             shiki({
               highlighter: highlighterPromise,
               language,
-              theme: diffsDarkTheme.name,
+              theme: modernDarkTheme.name,
             }),
             drawSelection(),
             EditorView.updateListener.of((update) => {

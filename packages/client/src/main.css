@@ -138,7 +138,7 @@
   }
 }
 
-.dockview-theme-diffs {
+.dockview-theme-modern {
   --dv-gap: --spacing(2);
   --dv-paneview-active-outline-color: dodgerblue;
   --dv-tabs-and-actions-container-font-size: var(--text-sm);

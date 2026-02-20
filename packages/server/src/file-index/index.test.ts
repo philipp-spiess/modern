@@ -9,7 +9,7 @@ describe("fileIndex", () => {
   let fixturePath: string;
 
   beforeEach(async () => {
-    fixturePath = path.join(tmpdir(), `diffs-test-${Date.now()}`);
+    fixturePath = path.join(tmpdir(), `modern-test-${Date.now()}`);
     await mkdir(fixturePath, { recursive: true });
 
     const git = simpleGit(fixturePath);

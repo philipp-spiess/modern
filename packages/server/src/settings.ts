@@ -77,10 +77,11 @@ export function __stopSettingsWatcherForTests() {
 }
 
 function resolveSettingsPath(): string {
-  if (process.env.DIFFS_SETTINGS_PATH) {
-    return path.resolve(process.env.DIFFS_SETTINGS_PATH);
+  const customPath = process.env.MODERN_SETTINGS_PATH ?? process.env.DIFFS_SETTINGS_PATH;
+  if (customPath) {
+    return path.resolve(customPath);
   }
-  return path.join(homedir(), ".diffs", "settings.json");
+  return path.join(homedir(), ".modern", "settings.json");
 }
 
 async function ensureSettingsDirectory(): Promise<void> {

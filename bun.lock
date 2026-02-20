@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "diffs",
+      "name": "modern",
       "dependencies": {
         "@tauri-apps/plugin-shell": "~2",
         "ai": "^5.0.98",
@@ -17,7 +17,7 @@
       },
     },
     "packages/client": {
-      "name": "@diffs-io/client",
+      "name": "@moderndev/client",
       "version": "0.0.0",
       "dependencies": {
         "@ai-sdk/react": "^2.0.98",
@@ -73,7 +73,7 @@
         "use-stick-to-bottom": "^1.1.1",
       },
       "devDependencies": {
-        "@diffs-io/server": "workspace:*",
+        "@moderndev/server": "workspace:*",
         "@tailwindcss/vite": "^4.1.17",
         "@types/node": "^24.10.0",
         "@types/react": "^19.2.3",
@@ -86,7 +86,7 @@
       },
     },
     "packages/server": {
-      "name": "@diffs-io/server",
+      "name": "@moderndev/server",
       "version": "0.0.0",
       "dependencies": {
         "@ai-sdk/anthropic": "^2.0.45",
@@ -271,9 +271,9 @@
 
     "@codemirror/view": ["@codemirror/view@6.38.8", "", { "dependencies": { "@codemirror/state": "^6.5.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-XcE9fcnkHCbWkjeKyi0lllwXmBLtyYb5dt89dJyx23I9+LSh5vZDIuk7OLG4VM1lgrXZQcY6cxyZyk5WVPRv/A=="],
 
-    "@diffs-io/client": ["@diffs-io/client@workspace:packages/client"],
+    "@moderndev/client": ["@moderndev/client@workspace:packages/client"],
 
-    "@diffs-io/server": ["@diffs-io/server@workspace:packages/server"],
+    "@moderndev/server": ["@moderndev/server@workspace:packages/server"],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.25.12", "", { "os": "aix", "cpu": "ppc64" }, "sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA=="],
 

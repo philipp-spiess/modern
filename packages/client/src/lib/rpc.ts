@@ -1,4 +1,4 @@
-import type { Client } from "@diffs-io/server";
+import type { Client } from "@moderndev/server";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/websocket";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";

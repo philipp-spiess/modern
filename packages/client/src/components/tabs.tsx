@@ -1,4 +1,4 @@
-import type { Panel, Tabs as TabsType } from "@diffs-io/server/src/state";
+import type { Panel, Tabs as TabsType } from "@moderndev/server/src/state";
 import { useQuery } from "@tanstack/react-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockviewReact, type DockviewReadyEvent } from "dockview";
@@ -322,8 +322,8 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
 }
 
 const theme = {
-  name: "diffs",
-  className: "dockview-theme-diffs",
+  name: "modern",
+  className: "dockview-theme-modern",
   gap: 8,
 };
 

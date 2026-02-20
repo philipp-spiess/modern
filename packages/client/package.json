@@ -1,5 +1,5 @@
 {
-  "name": "@diffs-io/client",
+  "name": "@moderndev/client",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -63,7 +63,7 @@
     "use-stick-to-bottom": "^1.1.1"
   },
   "devDependencies": {
-    "@diffs-io/server": "workspace:*",
+    "@moderndev/server": "workspace:*",
     "@tailwindcss/vite": "^4.1.17",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.3",

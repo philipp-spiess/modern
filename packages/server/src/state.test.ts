@@ -11,7 +11,7 @@ import {
 } from "./state";
 
 describe("tabs", () => {
-  const workspace = "/tmp/diffs-state-test";
+  const workspace = "/tmp/modern-state-test";
 
   beforeEach(() => {
     state.workspaces.value = { active: workspace, open: [workspace] };

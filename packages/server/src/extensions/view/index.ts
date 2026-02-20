@@ -1,8 +1,8 @@
-import { createExtension, diffs, executeCommand } from "../../extension";
+import { createExtension, modern, executeCommand } from "../../extension";
 import { createDisposable } from "../../utils/disposable";
 import { ensureSettingsFile } from "../../settings";
 
-export const id = "diffs.view";
+export const id = "modern.view";
 
 const defaultKeybindings: ReadonlyArray<{
   command: string;
@@ -26,7 +26,7 @@ export default createExtension(() => {
   const disposables: Disposable[] = [];
 
   disposables.push(
-    diffs.commands.registerCommand(
+    modern.commands.registerCommand(
       "settings.open",
       async () => {
         const settingsPath = await ensureSettingsFile();
@@ -38,7 +38,7 @@ export default createExtension(() => {
 
   for (const binding of defaultKeybindings) {
     disposables.push(
-      diffs.commands.registerCommand(
+      modern.commands.registerCommand(
         binding.command,
         () => {
           // Implemented in the client

@@ -1,4 +1,4 @@
-import type { Settings } from "@diffs-io/server/src/settings";
+import type { Settings } from "@moderndev/server/src/settings";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { orpc } from "./rpc";
