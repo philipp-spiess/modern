@@ -1,8 +1,0 @@
-.DS_Store
-.env
-.wrangler
-/node_modules/
-
-# React Router
-/.react-router/
-/build/
