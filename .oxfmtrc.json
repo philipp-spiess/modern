@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "ignorePatterns": [
+    "bun.lock",
+    "**/dist/**",
+    "**/node_modules/**",
+    "src-tauri/target/**",
+    "src-tauri/gen/**",
+    "src-tauri/capabilities/**"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react"],
+  "ignorePatterns": [
+    "bun.lock",
+    "**/dist/**",
+    "**/node_modules/**",
+    "src-tauri/target/**",
+    "src-tauri/gen/**",
+    "src-tauri/capabilities/**",
+    "packages/client/src/components/ai-elements/**"
+  ]
+}

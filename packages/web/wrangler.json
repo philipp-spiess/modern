@@ -1,0 +1,13 @@
+{
+  "name": "diffs",
+  "main": "./workers/app.ts",
+  "compatibility_date": "2025-11-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./build/client"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

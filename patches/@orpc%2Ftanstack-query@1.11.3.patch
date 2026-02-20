@@ -1,0 +1,44 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 84051d2e2553129ff7ef5e7706192f31ba5ec1fb..b027019c906317498c02e04395991f6d2347b243 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -20,19 +20,30 @@ function createGeneralUtils(path) {
+ function experimental_liveQuery(queryFn) {
+   return async (context) => {
+     const stream = await queryFn(context);
+-    let last;
+-    for await (const chunk of stream) {
+-      if (context.signal.aborted) {
+-        throw context.signal.reason;
+-      }
+-      last = { chunk };
+-      context.client.setQueryData(context.queryKey, chunk);
+-    }
+-    if (!last) {
++
++    const iterator = stream[Symbol.asyncIterator]();
++    const first = await iterator.next();
++
++    if (first.done) {
++      const cached = context.client.getQueryData(context.queryKey);
++      if (cached !== void 0) return cached;
++      if (context.signal.aborted) return void 0;
+       throw new Error(
+         `Live query for ${stringifyJSON(context.queryKey)} did not yield any data. Ensure the query function returns an AsyncIterable with at least one chunk.`
+       );
+     }
++
++    let last = { chunk: first.value };
++    context.client.setQueryData(context.queryKey, first.value);
++
++    (async () => {
++      for await (const chunk of iterator) {
++        if (context.signal.aborted) break;
++        last = { chunk };
++        context.client.setQueryData(context.queryKey, chunk);
++      }
++    })();
++
+     return last.chunk;
+   };
+ }

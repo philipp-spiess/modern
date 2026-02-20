@@ -1,0 +1,83 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "diffs",
+  "version": "0.1.0",
+  "identifier": "io.diffs",
+  "build": {
+    "beforeDevCommand": "bun --cwd packages/client dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run --workspaces build",
+    "frontendDist": "../packages/client/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "diffs",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 400,
+        "minHeight": 300,
+        "decorations": true,
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 18,
+          "y": 25
+        },
+        "dragDropEnabled": false
+      }
+    ],
+    "macOSPrivateApi": true,
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "draggable-window",
+          "windows": ["*"],
+          "permissions": ["core:window:allow-start-dragging"]
+        },
+        {
+          "identifier": "rpc-events",
+          "windows": ["*"],
+          "permissions": [
+            "core:event:allow-listen",
+            "core:event:allow-unlisten",
+            "core:event:allow-emit"
+          ]
+        },
+        {
+          "identifier": "window-destroy",
+          "windows": ["*"],
+          "permissions": ["core:window:allow-destroy"]
+        },
+        {
+          "identifier": "file-dialog",
+          "windows": ["*"],
+          "permissions": ["dialog:allow-open"]
+        },
+        {
+          "identifier": "menu",
+          "windows": ["*"],
+          "permissions": ["core:menu:default"]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": ["icon-assets/Assets.car"],
+    "macOS": {
+      "infoPlist": "Info.plist"
+    },
+    "externalBin": ["binaries/server"]
+  }
+}
