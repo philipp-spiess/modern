@@ -36,6 +36,16 @@ export default createExtension(() => {
     ),
   );
 
+  disposables.push(
+    modern.commands.registerCommand(
+      "view.splash.open",
+      () => {
+        // Implemented in the client
+      },
+      { title: "Show Welcome" },
+    ),
+  );
+
   for (const binding of defaultKeybindings) {
     disposables.push(
       modern.commands.registerCommand(

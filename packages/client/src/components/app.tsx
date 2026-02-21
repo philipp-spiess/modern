@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Menu, MenuItem, Submenu, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
 import { useHandle } from "../lib/use-handle";
@@ -59,9 +59,15 @@ function App() {
     };
   }, []);
 
+  const showSplash = useCallback(() => setIsSplashVisible(true), []);
+
   useKeybinding("global", async (command) => {
     if (command === "files.openWorkspace") {
       await openWorkspace();
+      return;
+    }
+    if (command === "view.splash.open") {
+      showSplash();
       return;
     }
     await client.commands.run({ command });
@@ -114,9 +120,8 @@ function App() {
     });
   }, [cwd, activeThread]);
 
-  // TODO: Show a nice empty state / welcome screen
   if (!cwd) {
-    return null;
+    return <SplashScreen onClose={() => {}} />;
   }
 
   return (
@@ -130,7 +135,6 @@ function App() {
           activeThread={activeThread}
           workspaces={workspaces}
           expandedByWorkspace={expandedByWorkspace}
-          onShowSplash={() => setIsSplashVisible(true)}
         />
 
         <div className="group relative h-full w-px select-none cursor-ew-resize">
@@ -166,7 +170,7 @@ function App() {
 
       {isSplashVisible ? <SplashScreen onClose={() => setIsSplashVisible(false)} /> : null}
 
-      <CommandPalette cwd={cwd} />
+      <CommandPalette cwd={cwd} onShowSplash={showSplash} />
     </div>
   );
 }

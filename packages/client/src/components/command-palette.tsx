@@ -8,6 +8,7 @@ import { basename, dirname } from "../utils/path";
 
 type CommandPaletteProps = {
   cwd: string;
+  onShowSplash?: () => void;
 };
 
 type RegisteredCommand = {
@@ -17,7 +18,7 @@ type RegisteredCommand = {
   defaultKeybinding?: { key: string; scope?: string };
 };
 
-export default function CommandPalette({ cwd }: CommandPaletteProps) {
+export default function CommandPalette({ cwd, onShowSplash }: CommandPaletteProps) {
   const [search, setSearch] = useState("");
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const commandPaletteRef = useRef<any | null>(null);
@@ -104,9 +105,13 @@ export default function CommandPalette({ cwd }: CommandPaletteProps) {
         await openWorkspace();
         return;
       }
+      if (commandId === "view.splash.open") {
+        onShowSplash?.();
+        return;
+      }
       await client.commands.run({ command: commandId });
     },
-    [closePalette],
+    [closePalette, onShowSplash],
   );
 
   const handleOpenFile = useCallback(
