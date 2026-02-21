@@ -1,5 +1,6 @@
 import { FolderIcon, FolderPlusIcon, GlobeIcon, type LucideIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { openWorkspace } from "../lib/workspace";
 
 type SplashScreenProps = {
   onClose: () => void;
@@ -17,27 +18,28 @@ function SplashScreen({ onClose }: SplashScreenProps) {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
+  const handleOpenProject = useCallback(async () => {
+    await openWorkspace();
+    onClose();
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 bg-black text-white" onClick={onClose}>
+    <div
+      data-tauri-drag-region
+      className="fixed inset-0 z-50 bg-neutral-900/75 backdrop-blur-xl text-white"
+      onClick={onClose}
+    >
       <div
         className="mx-auto flex size-full max-w-[1320px] flex-col px-5 pb-8 pt-[30vh]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto flex items-center gap-4">
           <SplashLogo />
-          <span
-            className="text-5xl inline-block relative -top-[5px]"
-            style={{
-              fontFamily: '"Michroma", "JetBrains Mono", ui-sans-serif, system-ui, sans-serif',
-              letterSpacing: "0.01em",
-            }}
-          >
-            modern
-          </span>
+          <span className="text-5xl inline-block relative -top-[5px] tracking-tight font-light">Modern</span>
         </div>
 
         <section className="mx-auto mt-18 grid w-full max-w-[620px] grid-cols-1 gap-4 sm:grid-cols-3">
-          <SplashCard Icon={FolderIcon} label="Open project" />
+          <SplashCard Icon={FolderIcon} label="Open project" onAction={handleOpenProject} />
           <SplashCard Icon={GlobeIcon} label="Clone from URL" />
           <SplashCard Icon={FolderPlusIcon} label="Quick start" />
         </section>
@@ -204,11 +206,12 @@ function SplashLogo() {
   return <canvas ref={canvasRef} className="size-16 shrink-0" aria-hidden />;
 }
 
-function SplashCard({ Icon, label }: { Icon: LucideIcon; label: string }) {
+function SplashCard({ Icon, label, onAction }: { Icon: LucideIcon; label: string; onAction?: () => void }) {
   return (
     <button
       type="button"
-      className="h-[112px] rounded-[11px] border border-white/18 bg-[#1d1917] px-3.5 py-3.5 text-left shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]"
+      onClick={onAction}
+      className="h-[112px] rounded-lg bg-neutral-900/75 shadow inset-shadow-sm inset-shadow-white/3 outline -outline-offset-1 outline-white/10 px-3.5 py-3.5 text-left transition-colors hover:bg-neutral-900/90"
     >
       <div className="flex h-full flex-col justify-between">
         <Icon className="size-[18px] text-white/95" strokeWidth={1.75} />
