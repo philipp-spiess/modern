@@ -1,17 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { init, Terminal, FitAddon } from "ghostty-web";
 import { useEffect, useRef, useState } from "react";
 import { commands, type ExtensionPanelProps } from "../../lib/extensions";
 import { useSettings } from "../../lib/settings";
-import "@xterm/xterm/css/xterm.css";
 
 // Theme colors from theme.json (terminal.* keys)
 const terminalTheme = {
-  background: "#00000000",
+  background: "#121212",
   foreground: "#dbd7caee",
   cursor: "#dbd7caee",
   cursorAccent: "#121212",
@@ -50,6 +46,8 @@ interface TerminalPanelState {
   cwd?: string;
 }
 
+const ghosttyReady = init();
+
 export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelProps<TerminalPanelState>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -66,140 +64,124 @@ export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelPro
   useEffect(() => {
     if (!containerRef.current || !layoutRef.current) return;
 
-    // VSCode-like xterm.js configuration
-    const terminal = new Terminal({
-      allowProposedApi: true,
-      allowTransparency: false,
-      cursorBlink: true,
-      cursorStyle: "block",
-      cursorInactiveStyle: "outline",
-      drawBoldTextInBrightColors: true,
-      fastScrollModifier: "alt",
-      fastScrollSensitivity: 5,
-      fontFamily: `${editorSettings.fontFamily}, monospace`,
-      fontSize: editorSettings.fontSize,
-      fontWeight: "normal",
-      fontWeightBold: "bold",
-      lineHeight: 1.0,
-      letterSpacing: 0,
-      minimumContrastRatio: 4.5,
-      scrollback: 1000,
-      scrollSensitivity: 1,
-      smoothScrollDuration: 0,
-      tabStopWidth: 8,
-      theme: terminalTheme,
-    });
-
-    // Load addons
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-
-    // Unicode11 addon for better unicode support
-    const unicode11Addon = new Unicode11Addon();
-    terminal.loadAddon(unicode11Addon);
-    terminal.unicode.activeVersion = "11";
-
-    terminalRef.current = terminal;
-    fitAddonRef.current = fitAddon;
-
-    terminal.open(containerRef.current);
-
-    // Try to load WebGL addon for better rendering (like VSCode)
-    // This prevents emoji rendering and handles ASCII art better
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
-      });
-      terminal.loadAddon(webglAddon);
-    } catch {
-      console.warn("WebGL addon failed to load, using default renderer");
-    }
-
+    const container = containerRef.current;
+    const layout = layoutRef.current;
     let disposed = false;
-
-    const fitTerminal = () => {
-      if (disposed) return;
-
-      const currentTerminal = terminalRef.current;
-      if (!currentTerminal?.element || !currentTerminal.element.isConnected) return;
-
-      const parent = currentTerminal.element.parentElement;
-      if (!parent || parent.clientWidth === 0 || parent.clientHeight === 0) return;
-
-      // Guard against transient renderer teardown/creation while Dockview re-lays out panes.
-      const hasRenderer = Boolean((currentTerminal as any)?._core?._renderService?._renderer?.value);
-      if (!hasRenderer) return;
-
-      try {
-        fitAddon.fit();
-      } catch {
-        // FitAddon can throw when renderer is not ready yet
-      }
-    };
-
-    // Disable dockview transform animations for this view to avoid one-frame xterm stretching.
-    const dockviewView = containerRef.current.closest(".dv-view");
-    dockviewView?.classList.add("dv-view-terminal");
-
-    // Initial fit after the first frame, then once more on the next frame.
-    initialFitRafRef.current = requestAnimationFrame(() => {
-      fitTerminal();
-      initialFitRafRef.current = requestAnimationFrame(() => {
-        fitTerminal();
-      });
-    });
-
-    // Re-fit after web fonts are ready to prevent fallback-metric flicker.
-    if ("fonts" in document) {
-      void document.fonts.ready.then(() => {
-        if (disposed) return;
-        fitTerminal();
-      });
-    }
-
-    // Keep xterm in sync with layout changes.
-    const resizeObserver = new ResizeObserver(() => {
-      if (resizeFitRafRef.current) {
-        cancelAnimationFrame(resizeFitRafRef.current);
-      }
-      resizeFitRafRef.current = requestAnimationFrame(() => {
-        fitTerminal();
-      });
-    });
-    resizeObserver.observe(layoutRef.current);
-
-    // Forward user input to PTY
-    const inputDisposable = terminal.onData((data) => {
-      if (sessionIdRef.current) {
-        invoke("write_to_pty", { id: sessionIdRef.current, data }).catch(console.error);
-      }
-    });
-
-    // Forward resize events from xterm.js
-    const resizeDisposable = terminal.onResize(({ cols, rows }) => {
-      if (sessionIdRef.current) {
-        invoke("resize_pty", { id: sessionIdRef.current, cols, rows }).catch(console.error);
-      }
-    });
-
-    // Listen for terminal title changes (from OSC escape sequences)
-    const titleDisposable = terminal.onTitleChange((title) => {
-      if (title && state.terminalId) {
-        commands
-          .execute("terminal.setTitle", { terminalId: state.terminalId, title }, { cwd: workspaceCwd })
-          .catch(console.error);
-      }
-    });
-
-    // Set up event listeners
+    let terminal: Terminal | null = null;
+    let fitAddon: FitAddon | null = null;
+    let inputDisposable: { dispose(): void } | null = null;
+    let resizeDisposable: { dispose(): void } | null = null;
+    let titleDisposable: { dispose(): void } | null = null;
+    let resizeObserver: ResizeObserver | null = null;
     let unlistenData: UnlistenFn | null = null;
     let unlistenExit: UnlistenFn | null = null;
 
-    const setupListeners = async () => {
+    const setup = async () => {
+      await Promise.all([ghosttyReady, document.fonts.ready]);
+      if (disposed) return;
+
+      terminal = new Terminal({
+        cursorBlink: true,
+        cursorStyle: "block",
+        fontFamily: `"${editorSettings.fontFamily}", monospace`,
+        fontSize: editorSettings.fontSize,
+        scrollback: 1000,
+        smoothScrollDuration: 0,
+        theme: terminalTheme,
+      });
+
+      fitAddon = new FitAddon();
+      terminal.loadAddon(fitAddon);
+
+      terminalRef.current = terminal;
+      fitAddonRef.current = fitAddon;
+
+      terminal.open(container);
+
+      // In ghostty-web, returning true = "handled, skip ghostty processing" (opposite of xterm.js)
+      terminal.attachCustomKeyEventHandler((e) => {
+        if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+          const key = e.key.toLowerCase();
+          if (key === "t" || key === "w" || key === "n" || key === "," || key === "p" || key === "k") {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      const fitTerminal = () => {
+        if (disposed) return;
+        if (!terminal?.element || !terminal.element.isConnected) return;
+
+        const parent = terminal.element.parentElement;
+        if (!parent || parent.clientWidth === 0 || parent.clientHeight === 0) return;
+
+        try {
+          fitAddon!.fit();
+        } catch {
+          // FitAddon can throw when renderer is not ready yet
+        }
+      };
+
+      // Disable dockview transform animations for this view to avoid one-frame stretching.
+      const dockviewView = container.closest(".dv-view");
+      dockviewView?.classList.add("dv-view-terminal");
+
+      // Initial fit after the first frame, then once more on the next frame.
+      initialFitRafRef.current = requestAnimationFrame(() => {
+        fitTerminal();
+        initialFitRafRef.current = requestAnimationFrame(() => {
+          fitTerminal();
+        });
+      });
+
+      // Re-measure font metrics and re-fit after web fonts are ready.
+      if ("fonts" in document) {
+        void document.fonts.ready.then(() => {
+          if (disposed) return;
+          terminal!.renderer?.remeasureFont();
+          fitTerminal();
+        });
+      }
+
+      // Keep terminal in sync with layout changes.
+      resizeObserver = new ResizeObserver(() => {
+        if (resizeFitRafRef.current) {
+          cancelAnimationFrame(resizeFitRafRef.current);
+        }
+        resizeFitRafRef.current = requestAnimationFrame(() => {
+          fitTerminal();
+        });
+      });
+      resizeObserver.observe(layout);
+
+      // Forward user input to PTY
+      inputDisposable = terminal.onData((data) => {
+        if (sessionIdRef.current) {
+          invoke("write_to_pty", { id: sessionIdRef.current, data }).catch(console.error);
+        }
+      });
+
+      // Forward resize events
+      resizeDisposable = terminal.onResize(({ cols, rows }) => {
+        if (sessionIdRef.current) {
+          invoke("resize_pty", { id: sessionIdRef.current, cols, rows }).catch(console.error);
+        }
+      });
+
+      // Listen for terminal title changes (from OSC escape sequences)
+      titleDisposable = terminal.onTitleChange((title) => {
+        if (title && state.terminalId) {
+          commands
+            .execute("terminal.setTitle", { terminalId: state.terminalId, title }, { cwd: workspaceCwd })
+            .catch(console.error);
+        }
+      });
+
+      // Set up event listeners
       unlistenData = await listen<PtyDataPayload>("pty://data", (event) => {
         if (event.payload.id === sessionIdRef.current) {
-          terminal.write(event.payload.data);
+          terminal!.write(event.payload.data);
         }
       });
 
@@ -207,17 +189,14 @@ export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelPro
         if (event.payload.id === sessionIdRef.current) {
           setStatus("exited");
           setExitCode(event.payload.code);
-          terminal.writeln("");
+          terminal!.writeln("");
           const extra = event.payload.message ? ` - ${event.payload.message}` : "";
-          terminal.writeln(`\u001b[90mProcess exited (code: ${event.payload.code}${extra})\u001b[0m`);
+          terminal!.writeln(`\u001b[90mProcess exited (code: ${event.payload.code}${extra})\u001b[0m`);
           sessionIdRef.current = null;
         }
       });
-    };
 
-    // Start the PTY session
-    const startSession = async () => {
-      // Ensure we have proper dimensions before starting
+      // Start the PTY session
       fitTerminal();
 
       try {
@@ -234,7 +213,7 @@ export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelPro
 
         // Send initial resize after session starts
         requestAnimationFrame(() => {
-          if (sessionIdRef.current) {
+          if (sessionIdRef.current && terminal) {
             invoke("resize_pty", {
               id: sessionIdRef.current,
               cols: terminal.cols,
@@ -249,10 +228,9 @@ export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelPro
       }
     };
 
-    setupListeners().then(startSession).catch(console.error);
+    setup().catch(console.error);
 
     return () => {
-      // Cleanup
       disposed = true;
       if (initialFitRafRef.current) {
         cancelAnimationFrame(initialFitRafRef.current);
@@ -263,15 +241,15 @@ export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelPro
         resizeFitRafRef.current = null;
       }
 
-      inputDisposable.dispose();
-      resizeDisposable.dispose();
-      titleDisposable.dispose();
-      resizeObserver.disconnect();
+      inputDisposable?.dispose();
+      resizeDisposable?.dispose();
+      titleDisposable?.dispose();
+      resizeObserver?.disconnect();
+      const dockviewView = container.closest(".dv-view");
       dockviewView?.classList.remove("dv-view-terminal");
       unlistenData?.();
       unlistenExit?.();
 
-      // Close PTY session
       const sessionId = sessionIdRef.current;
       if (sessionId) {
         invoke("close_pty", { id: sessionId }).catch(() => {
@@ -282,7 +260,7 @@ export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelPro
       fitAddonRef.current = null;
       terminalRef.current = null;
 
-      terminal.dispose();
+      terminal?.dispose();
     };
   }, [state.cwd, state.terminalId, workspaceCwd, editorSettings.fontFamily, editorSettings.fontSize]);
 

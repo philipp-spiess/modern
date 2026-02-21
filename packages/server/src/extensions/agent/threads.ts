@@ -165,8 +165,25 @@ async function generateTitleWithInMemorySession(cwd: string, firstPrompt: string
     return null;
   }
 
-  const model = pickTitleModel(availableModels);
+  const candidates = rankTitleModels(availableModels);
 
+  for (const model of candidates) {
+    const title = await tryGenerateTitle(cwd, authStorage, modelRegistry, model, firstPrompt);
+    if (title) {
+      return title;
+    }
+  }
+
+  return null;
+}
+
+async function tryGenerateTitle(
+  cwd: string,
+  authStorage: AuthStorage,
+  modelRegistry: ModelRegistry,
+  model: AvailableModel,
+  firstPrompt: string,
+): Promise<string | null> {
   const { session } = await createAgentSession({
     cwd,
     authStorage,
@@ -198,12 +215,27 @@ async function generateTitleWithInMemorySession(cwd: string, firstPrompt: string
   return normalizeGeneratedTitle(output);
 }
 
-function pickTitleModel(models: AvailableModel[]): AvailableModel {
-  return (
-    models.find((model) => model.provider === "openai-codex" && model.id === "gpt-5.1-codex-mini") ??
-    models.find((model) => model.provider === "openai-codex" && model.id === "gpt-5.3-codex") ??
-    models[0]
-  );
+function rankTitleModels(models: AvailableModel[]): AvailableModel[] {
+  const preferred: Array<{ provider: string; id: string }> = [
+    { provider: "openai-codex", id: "gpt-5.1-codex-mini" },
+    { provider: "openai-codex", id: "gpt-5.3-codex" },
+    { provider: "anthropic", id: "claude-haiku-4-5" },
+  ];
+
+  const ranked: AvailableModel[] = [];
+  for (const pref of preferred) {
+    const match = models.find((m) => m.provider === pref.provider && m.id === pref.id);
+    if (match) {
+      ranked.push(match);
+    }
+  }
+
+  const fallback = models.find((m) => !ranked.includes(m));
+  if (fallback) {
+    ranked.push(fallback);
+  }
+
+  return ranked;
 }
 
 function buildTitlePrompt(firstPrompt: string): string {
@@ -224,7 +256,8 @@ function normalizeGeneratedTitle(value: string): string | null {
     firstLine
       .replace(/^title\s*:\s*/i, "")
       .replace(/^[-*]\s+/, "")
-      .replace(/^['"`]+|['"`]+$/g, ""),
+      .replace(/^['"`]+|['"`]+$/g, "")
+      .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1"),
   );
 
   if (!cleaned) {
