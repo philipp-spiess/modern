@@ -165,8 +165,25 @@ async function generateTitleWithInMemorySession(cwd: string, firstPrompt: string
     return null;
   }
 
-  const model = pickTitleModel(availableModels);
+  const candidates = rankTitleModels(availableModels);
 
+  for (const model of candidates) {
+    const title = await tryGenerateTitle(cwd, authStorage, modelRegistry, model, firstPrompt);
+    if (title) {
+      return title;
+    }
+  }
+
+  return null;
+}
+
+async function tryGenerateTitle(
+  cwd: string,
+  authStorage: AuthStorage,
+  modelRegistry: ModelRegistry,
+  model: AvailableModel,
+  firstPrompt: string,
+): Promise<string | null> {
   const { session } = await createAgentSession({
     cwd,
     authStorage,
@@ -198,12 +215,18 @@ async function generateTitleWithInMemorySession(cwd: string, firstPrompt: string
   return normalizeGeneratedTitle(output);
 }
 
-function pickTitleModel(models: AvailableModel[]): AvailableModel {
-  return (
-    models.find((model) => model.provider === "openai-codex" && model.id === "gpt-5.1-codex-mini") ??
-    models.find((model) => model.provider === "openai-codex" && model.id === "gpt-5.3-codex") ??
-    models[0]
-  );
+const TITLE_MODEL_IDS = ["gpt-5.1-codex-mini", "claude-haiku-4-5", "gemini-3-flash", "gemini-3-flash-preview"];
+
+function rankTitleModels(available: AvailableModel[]): AvailableModel[] {
+  const ranked: AvailableModel[] = [];
+  for (const id of TITLE_MODEL_IDS) {
+    const match = available.find((m) => m.id === id && !ranked.includes(m));
+    if (match) {
+      ranked.push(match);
+    }
+  }
+
+  return ranked;
 }
 
 function buildTitlePrompt(firstPrompt: string): string {
@@ -224,7 +247,8 @@ function normalizeGeneratedTitle(value: string): string | null {
     firstLine
       .replace(/^title\s*:\s*/i, "")
       .replace(/^[-*]\s+/, "")
-      .replace(/^['"`]+|['"`]+$/g, ""),
+      .replace(/^['"`]+|['"`]+$/g, "")
+      .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1"),
   );
 
   if (!cleaned) {
