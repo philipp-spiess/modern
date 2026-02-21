@@ -11,7 +11,7 @@ import "@xterm/xterm/css/xterm.css";
 
 // Theme colors from theme.json (terminal.* keys)
 const terminalTheme = {
-  background: "#00000000",
+  background: "#121212",
   foreground: "#dbd7caee",
   cursor: "#dbd7caee",
   cursorAccent: "#121212",
