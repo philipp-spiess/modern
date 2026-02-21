@@ -46,6 +46,26 @@ const CustomTabHeader = ({ api }: any) => {
   const iconColor = params?.iconColor;
   const closeOverlayIcon = params?.closeOverlayIcon;
 
+  const onMiddleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 1) {
+      return;
+    }
+
+    event.preventDefault();
+  }, []);
+
+  const onAuxClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.button !== 1) {
+        return;
+      }
+
+      event.preventDefault();
+      api.close();
+    },
+    [api],
+  );
+
   const onClose = useCallback(
     (event: React.MouseEvent<HTMLSpanElement>) => {
       event.preventDefault();
@@ -55,7 +75,11 @@ const CustomTabHeader = ({ api }: any) => {
   );
 
   return (
-    <div className="flex items-center h-full group outline-none after:bg-transparent!">
+    <div
+      onMouseDown={onMiddleMouseDown}
+      onAuxClick={onAuxClick}
+      className="flex items-center h-full group outline-none after:bg-transparent!"
+    >
       <div className="h-7 flex px-1 items-center rounded-md in-[.dv-active-tab]:bg-white/2">
         {icon ? (
           <span className="pl-1">
