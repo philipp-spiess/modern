@@ -30,12 +30,13 @@ function SplashScreen({ onClose }: SplashScreenProps) {
       onClick={onClose}
     >
       <div
+        data-tauri-drag-region
         className="mx-auto flex size-full max-w-[1320px] flex-col px-5 pb-8 pt-[30vh]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto flex items-center gap-4">
           <SplashLogo />
-          <span className="text-5xl inline-block relative -top-[5px] tracking-tight font-light">Modern</span>
+          <span className="text-5xl inline-block relative -top-[5px] tracking-tight font-light select-none">Modern</span>
         </div>
 
         <section className="mx-auto mt-18 grid w-full max-w-[620px] grid-cols-1 gap-4 sm:grid-cols-3">
