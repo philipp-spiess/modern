@@ -33,6 +33,7 @@ Title:`;
 
 const titleGenerationInFlight = new Set<string>();
 const titleGenerationRetryAt = new Map<string, number>();
+const titleModelBlacklist = new Set<string>();
 let titleGenerationQueue: Promise<void> = Promise.resolve();
 
 type AvailableModel = ReturnType<ModelRegistry["getAvailable"]>[number];
@@ -168,10 +169,17 @@ async function generateTitleWithInMemorySession(cwd: string, firstPrompt: string
   const candidates = rankTitleModels(availableModels);
 
   for (const model of candidates) {
+    const modelKey = `${model.provider}/${model.id}`;
+    if (titleModelBlacklist.has(modelKey)) {
+      continue;
+    }
+
     const title = await tryGenerateTitle(cwd, authStorage, modelRegistry, model, firstPrompt);
     if (title) {
       return title;
     }
+
+    titleModelBlacklist.add(modelKey);
   }
 
   return null;
