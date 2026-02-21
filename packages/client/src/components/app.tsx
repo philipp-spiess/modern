@@ -10,6 +10,7 @@ import { useHandle } from "../lib/use-handle";
 import { openWorkspace } from "../lib/workspace";
 import CommandPalette from "./command-palette";
 import Sidebar from "./sidebar";
+import SplashScreen from "./splash-screen";
 import WorkspaceShell from "./workspace-shell";
 
 const setupMenu = async () => {
@@ -43,6 +44,7 @@ void setupMenu();
 
 function App() {
   const [sidebarWidth, handleProps] = useHandle("horizontal", "sidebar-width", 320);
+  const [isSplashVisible, setIsSplashVisible] = useState(false);
   const layoutStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
   } as CSSProperties;
@@ -128,6 +130,7 @@ function App() {
           activeThread={activeThread}
           workspaces={workspaces}
           expandedByWorkspace={expandedByWorkspace}
+          onShowSplash={() => setIsSplashVisible(true)}
         />
 
         <div className="group relative h-full w-px select-none cursor-ew-resize">
@@ -160,6 +163,8 @@ function App() {
           })}
         </div>
       </main>
+
+      {isSplashVisible ? <SplashScreen onClose={() => setIsSplashVisible(false)} /> : null}
 
       <CommandPalette cwd={cwd} />
     </div>
