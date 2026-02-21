@@ -32,10 +32,9 @@ type SidebarProps = {
   activeThread: WorkspaceThreadSelection | null;
   workspaces: readonly string[];
   expandedByWorkspace: Record<string, boolean>;
-  onShowSplash: () => void;
 };
 
-function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace, onShowSplash }: SidebarProps) {
+function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: SidebarProps) {
   const { data } = useSuspenseQuery(
     orpc.git.statusWatch.experimental_liveOptions({
       context: { cache: true },
@@ -209,16 +208,6 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace, onS
             })}
           </ul>
         </section>
-      </div>
-
-      <div className="px-3 pb-2">
-        <button
-          type="button"
-          onClick={onShowSplash}
-          className="rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white"
-        >
-          <span>Splash</span>
-        </button>
       </div>
     </div>
   );
