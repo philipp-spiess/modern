@@ -46,6 +46,16 @@ export default createExtension(() => {
     ),
   );
 
+  disposables.push(
+    modern.commands.registerCommand(
+      "app.restart-server",
+      () => {
+        process.exit(0);
+      },
+      { title: "Restart App Server" },
+    ),
+  );
+
   for (const binding of defaultKeybindings) {
     disposables.push(
       modern.commands.registerCommand(

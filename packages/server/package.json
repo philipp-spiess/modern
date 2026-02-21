@@ -4,7 +4,7 @@
 	"version": "0.0.0",
 	"type": "module",
 	"scripts": {
-		"dev": "bun --watch src/index.ts",
+		"dev": "bun src/index.ts",
 		"build": "bun build src/index.ts --compile --minify --outfile dist/server",
 		"check": "tsgo --project tsconfig.json",
 		"postbuild": "bun scripts/rename.ts"

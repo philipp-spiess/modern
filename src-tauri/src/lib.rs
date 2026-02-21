@@ -2,19 +2,21 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use tauri::{Emitter, Manager, State};
-use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 mod terminal;
 
 pub struct ServerState {
     port: Mutex<Option<u16>>,
+    child: Mutex<Option<CommandChild>>,
 }
 
 impl ServerState {
     fn new() -> Self {
         Self {
             port: Mutex::new(None),
+            child: Mutex::new(None),
         }
     }
 
@@ -24,8 +26,24 @@ impl ServerState {
         }
     }
 
+    fn clear_port(&self) {
+        if let Ok(mut guard) = self.port.lock() {
+            *guard = None;
+        }
+    }
+
     fn port(&self) -> Option<u16> {
         self.port.lock().ok().and_then(|guard| *guard)
+    }
+
+    fn set_child(&self, child: CommandChild) {
+        if let Ok(mut guard) = self.child.lock() {
+            *guard = Some(child);
+        }
+    }
+
+    fn take_child(&self) -> Option<CommandChild> {
+        self.child.lock().ok().and_then(|mut guard| guard.take())
     }
 }
 
@@ -84,68 +102,59 @@ pub fn run() {
                 }
             }
 
-            let handle = app.handle().clone();
-
-            tauri::async_runtime::spawn(async move {
-                let (mut rx, _child) = if cfg!(debug_assertions) {
-                    println!("Starting server in dev mode with 'bun run dev'");
-
-                    handle
-                        .shell()
-                        .command("bun")
-                        .args(["run", "dev"])
-                        .current_dir("../packages/server")
-                        .spawn()
-                        .expect("Failed to spawn server")
-                } else {
-                    handle
+            if cfg!(debug_assertions) {
+                spawn_dev_server(app.handle());
+            } else {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let (mut rx, _child) = handle
                         .shell()
                         .sidecar("server")
                         .expect("Failed to create server sidecar command")
                         .spawn()
-                        .expect("Failed to spawn server sidecar")
-                };
+                        .expect("Failed to spawn server sidecar");
 
-                while let Some(event) = rx.recv().await {
-                    match event {
-                        CommandEvent::Stdout(bytes) => {
-                            let line = String::from_utf8_lossy(&bytes);
-                            let line = line.trim();
+                    while let Some(event) = rx.recv().await {
+                        match event {
+                            CommandEvent::Stdout(bytes) => {
+                                let line = String::from_utf8_lossy(&bytes);
+                                let line = line.trim();
 
-                            if line.is_empty() {
-                                continue;
-                            }
-
-                            if let Some(port) = extract_port(line) {
-                                if let Some(state) = handle.try_state::<ServerState>() {
-                                    state.set_port(port);
+                                if line.is_empty() {
+                                    continue;
                                 }
 
-                                if let Err(err) = handle.emit("server-port-changed", &port) {
-                                    eprintln!("Failed to emit port change event: {err}");
+                                if let Some(port) = extract_port(line) {
+                                    if let Some(state) = handle.try_state::<ServerState>() {
+                                        state.set_port(port);
+                                    }
+
+                                    if let Err(err) = handle.emit("server-port-changed", &port) {
+                                        eprintln!("Failed to emit port change event: {err}");
+                                    }
+
+                                    println!("Server listening on port {port}");
+                                    continue;
                                 }
 
-                                println!("Server listening on port {port}");
-                                continue;
+                                println!("Server: {line}");
                             }
-
-                            println!("Server: {line}");
+                            CommandEvent::Stderr(bytes) => {
+                                let line = String::from_utf8_lossy(&bytes);
+                                eprintln!("Server stderr: {}", line.trim());
+                            }
+                            CommandEvent::Error(err) => {
+                                eprintln!("Server error: {err}");
+                            }
+                            CommandEvent::Terminated(payload) => {
+                                eprintln!("Server terminated with code: {:?}", payload.code);
+                                break;
+                            }
+                            _ => {}
                         }
-                        CommandEvent::Stderr(bytes) => {
-                            let line = String::from_utf8_lossy(&bytes);
-                            eprintln!("Server stderr: {}", line.trim());
-                        }
-                        CommandEvent::Error(err) => {
-                            eprintln!("Server error: {err}");
-                        }
-                        CommandEvent::Terminated(payload) => {
-                            eprintln!("Server terminated with code: {:?}", payload.code);
-                            break;
-                        }
-                        _ => {}
                     }
-                }
-            });
+                });
+            }
 
             Ok(())
         })
@@ -159,6 +168,74 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn spawn_dev_server(handle: &tauri::AppHandle) {
+    // Kill previous server if still running
+    if let Some(state) = handle.try_state::<ServerState>() {
+        if let Some(old_child) = state.take_child() {
+            let _ = old_child.kill();
+        }
+        state.clear_port();
+    }
+
+    println!("Starting dev server...");
+
+    let (mut rx, child) = handle
+        .shell()
+        .command("bun")
+        .args(["run", "dev"])
+        .current_dir("../packages/server")
+        .spawn()
+        .expect("Failed to spawn dev server");
+
+    if let Some(state) = handle.try_state::<ServerState>() {
+        state.set_child(child);
+    }
+
+    let handle = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    let line = String::from_utf8_lossy(&bytes);
+                    let line = line.trim();
+
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    if let Some(port) = extract_port(line) {
+                        if let Some(state) = handle.try_state::<ServerState>() {
+                            state.set_port(port);
+                        }
+
+                        if let Err(err) = handle.emit("server-port-changed", &port) {
+                            eprintln!("Failed to emit port change event: {err}");
+                        }
+
+                        println!("Server listening on port {port}");
+                        continue;
+                    }
+
+                    println!("Server: {line}");
+                }
+                CommandEvent::Stderr(bytes) => {
+                    let line = String::from_utf8_lossy(&bytes);
+                    eprintln!("Server stderr: {}", line.trim());
+                }
+                CommandEvent::Error(err) => {
+                    eprintln!("Server error: {err}");
+                }
+                CommandEvent::Terminated(payload) => {
+                    eprintln!("Dev server terminated with code: {:?}. Restarting...", payload.code);
+                    spawn_dev_server(&handle);
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
 }
 
 fn extract_port(line: &str) -> Option<u16> {
