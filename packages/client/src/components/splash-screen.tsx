@@ -1,6 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { FolderIcon, FolderPlusIcon, GlobeIcon, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
+import { orpc } from "../lib/rpc";
 import { openWorkspace } from "../lib/workspace";
+import { dirname } from "../utils/path";
 
 type SplashScreenProps = {
   onClose: () => void;
@@ -23,6 +26,23 @@ function SplashScreen({ onClose }: SplashScreenProps) {
     onClose();
   }, [onClose]);
 
+  const handleOpenRepo = useCallback(
+    async (repoPath: string) => {
+      await openWorkspace(repoPath);
+      onClose();
+    },
+    [onClose],
+  );
+
+  const recentReposQuery = useQuery(
+    orpc.workspace.recentRepos.queryOptions({
+      queryKey: ["workspace", "recentRepos"],
+      input: { limit: 5 },
+    }),
+  );
+
+  const repos = recentReposQuery.data?.repos ?? [];
+
   return (
     <div
       data-tauri-drag-region
@@ -31,22 +51,67 @@ function SplashScreen({ onClose }: SplashScreenProps) {
     >
       <div
         data-tauri-drag-region
-        className="mx-auto flex size-full max-w-[1320px] flex-col px-5 pb-8 pt-[30vh]"
+        className="mx-auto flex size-full max-w-[1320px] flex-col items-center justify-center px-5"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto flex items-center gap-4">
           <SplashLogo />
-          <span className="text-5xl inline-block relative -top-[5px] tracking-tight font-light select-none">Modern</span>
+          <span className="text-5xl inline-block relative -top-[5px] tracking-tight font-light select-none">
+            Modern
+          </span>
         </div>
 
-        <section className="mx-auto mt-18 grid w-full max-w-[620px] grid-cols-1 gap-4 sm:grid-cols-3">
+        <section className="mx-auto mt-14 grid w-full max-w-[620px] grid-cols-1 gap-4 sm:grid-cols-3">
           <SplashCard Icon={FolderIcon} label="Open project" onAction={handleOpenProject} />
           <SplashCard Icon={GlobeIcon} label="Clone from URL" />
           <SplashCard Icon={FolderPlusIcon} label="Quick start" />
         </section>
+
+        {repos.length > 0 && (
+          <section className="mx-auto mt-8 w-full max-w-[620px]">
+            <h2 className="mb-2 text-xs text-white/40">Recent</h2>
+            <div className="rounded-lg bg-neutral-900/75 shadow inset-shadow-sm inset-shadow-white/3 outline -outline-offset-1 outline-white/10 overflow-hidden">
+              {repos.map((repo) => (
+                <button
+                  key={repo.path}
+                  type="button"
+                  onClick={() => void handleOpenRepo(repo.path)}
+                  className="flex w-full items-center gap-3 px-3.5 py-2 text-left text-sm transition-colors hover:bg-white/[0.06] border-b border-white/5 last:border-b-0"
+                >
+                  <FolderIcon className="size-3.5 shrink-0 text-white/40" strokeWidth={1.75} />
+                  <span className="font-medium text-white/80 shrink-0">{repo.name}</span>
+                  <span className="truncate text-xs text-white/30">{shortenHome(dirname(repo.path))}</span>
+                  <span className="ml-auto shrink-0 text-xs text-white/25">{formatAge(repo.updatedAt)}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
+}
+
+function shortenHome(dirPath: string): string {
+  const match = dirPath.match(/^\/(?:Users|home)\/[^/]+\/(.*)/);
+  return match ? `~/${match[1]}` : dirPath;
+}
+
+function formatAge(timestampMs: number): string {
+  const elapsed = Math.max(0, Date.now() - timestampMs);
+
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+  const month = 30 * day;
+
+  if (elapsed < minute) return "just now";
+  if (elapsed < hour) return `${Math.floor(elapsed / minute)}m ago`;
+  if (elapsed < day) return `${Math.floor(elapsed / hour)}h ago`;
+  if (elapsed < week) return `${Math.floor(elapsed / day)}d ago`;
+  if (elapsed < month) return `${Math.floor(elapsed / week)}w ago`;
+  return `${Math.floor(elapsed / month)}mo ago`;
 }
 
 function SplashLogo() {
@@ -65,7 +130,7 @@ function SplashLogo() {
 
     const size = 64;
     const inset = 6;
-    const gridCells = 8;
+    const gridCells = 6;
     const gridSize = size - inset * 2;
     const step = gridSize / gridCells;
     const segments = 48;
@@ -183,16 +248,16 @@ function SplashLogo() {
 
       for (let i = 0; i <= gridCells; i += 1) {
         const x = inset + i * step;
-        drawWarpedLine(x, inset, x, inset + gridSize, phase, 1.1);
+        drawWarpedLine(x, inset, x, inset + gridSize, phase, 1);
       }
 
       for (let i = 0; i <= gridCells; i += 1) {
         const y = inset + i * step;
-        drawWarpedLine(inset, y, inset + gridSize, y, phase, 1.1);
+        drawWarpedLine(inset, y, inset + gridSize, y, phase, 1);
       }
 
-      drawWarpedLine(inset, inset, inset + gridSize, inset, phase, 1.45);
-      drawWarpedLine(inset, inset, inset, inset + gridSize, phase, 1.45);
+      drawWarpedLine(inset, inset, inset + gridSize, inset, phase, 1);
+      drawWarpedLine(inset, inset, inset, inset + gridSize, phase, 1);
 
       animationFrameId = window.requestAnimationFrame(draw);
     };

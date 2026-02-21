@@ -6,6 +6,7 @@ import { agentRouter } from "./extensions/agent/router";
 import { filesRouter } from "./extensions/files/router";
 import { fileIndex } from "./file-index";
 import { gitStatusSignal, showHead, showStaged, showWorktree, stage, unstage } from "./git";
+import { discoverRecentRepos } from "./recent-repos";
 import { settings, writeSettings } from "./settings";
 import {
   closeTab,
@@ -87,6 +88,13 @@ const resolveWorkspaceState = () => {
     activeThread: getWorkspaceActiveThread(),
   };
 };
+
+export const workspaceRecentRepos = os
+  .input(z.object({ limit: z.number().int().min(1).max(50).optional() }).optional())
+  .handler(async ({ input }) => {
+    const repos = await discoverRecentRepos(input?.limit ?? 20);
+    return { repos };
+  });
 
 export const workspaceCwd = os.handler(() => {
   return resolveWorkspaceState();
@@ -361,6 +369,7 @@ type AppRouter = {
     setExpanded: typeof workspaceSetExpanded;
     openWithThread: typeof workspaceOpenWithThread;
     openNewThread: typeof workspaceOpenNewThread;
+    recentRepos: typeof workspaceRecentRepos;
   };
   tabs: {
     watch: typeof tabsWatch;
@@ -399,6 +408,7 @@ export const router: AppRouter = {
     setExpanded: workspaceSetExpanded,
     openWithThread: workspaceOpenWithThread,
     openNewThread: workspaceOpenNewThread,
+    recentRepos: workspaceRecentRepos,
   },
   tabs: {
     watch: tabsWatch,
