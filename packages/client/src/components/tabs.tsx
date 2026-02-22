@@ -14,9 +14,21 @@ const emptyPanels: Panel[] = [];
 
 const moduleCache = new Map<string, any>();
 
+const moduleImports: Record<string, () => Promise<any>> = {
+  "terminal/panel.tsx": () => import("../extensions/terminal/panel.tsx"),
+  "agent/chat.tsx": () => import("../extensions/agent/chat.tsx"),
+  "review/diff-view.tsx": () => import("../extensions/review/diff-view.tsx"),
+  "files/editor.tsx": () => import("../extensions/files/editor.tsx"),
+};
+
 function loadModule(modulePath: string): any {
   if (!moduleCache.has(modulePath)) {
-    const LazyComponent = lazy(() => import(/* @vite-ignore */ `../extensions/${modulePath}`));
+    const loader = moduleImports[modulePath];
+    if (!loader) {
+      console.error(`[tabs] Unknown extension module: ${modulePath}`);
+      return () => null;
+    }
+    const LazyComponent = lazy(loader);
     moduleCache.set(modulePath, LazyComponent);
   }
   return moduleCache.get(modulePath)!;
