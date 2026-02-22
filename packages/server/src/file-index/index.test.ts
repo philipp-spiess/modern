@@ -156,8 +156,9 @@ describe("fileIndex", () => {
     await createFile(fixturePath, "node_modules/package/index.js", "module.exports = {};");
     await createFile(fixturePath, ".env", "SECRET=123");
     await createFile(fixturePath, "temp.tmp", "temporary");
+    await createFile(fixturePath, "canary.ts", "export const canary = true;");
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await waitForIndex(fixturePath, "canary", (paths) => paths.includes("canary.ts"));
 
     const bundleResults = await fileIndex.quickOpen({
       cwd: fixturePath,
@@ -228,7 +229,7 @@ describe("fileIndex", () => {
     await createFile(fixturePath, "test.tmp", "temporary file");
     await createFile(fixturePath, "src/new-component.tsx", "export const Component = () => null;");
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForIndex(fixturePath, "component", (paths) => paths.includes("src/new-component.tsx"));
 
     const componentResults = await fileIndex.quickOpen({
       cwd: fixturePath,
@@ -272,4 +273,19 @@ async function createFile(fixturePath: string, relPath: string, content: string 
 async function createGitignore(fixturePath: string, patterns: string[]): Promise<void> {
   const gitignorePath = path.join(fixturePath, ".gitignore");
   await writeFile(gitignorePath, patterns.join("\n"));
+}
+
+async function waitForIndex(
+  cwd: string,
+  query: string,
+  predicate: (paths: string[]) => boolean,
+  timeout = 2000,
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const results = await fileIndex.quickOpen({ cwd, query, limit: 50 });
+    if (predicate(results.map((r) => r.path))) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`waitForIndex timed out after ${timeout}ms for query "${query}"`);
 }
