@@ -158,7 +158,7 @@ async function generateAndPersistSessionTitle(session: SessionInfo, firstPrompt:
 }
 
 async function generateTitleWithInMemorySession(cwd: string, firstPrompt: string): Promise<string | null> {
-  const authStorage = new AuthStorage();
+  const authStorage = AuthStorage.create();
   const modelRegistry = new ModelRegistry(authStorage);
   const availableModels = modelRegistry.getAvailable();
 

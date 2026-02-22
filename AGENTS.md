@@ -33,8 +33,8 @@ Prefer Bun’s `bun test` with colocated specs (`*.test.ts`) when adding unit te
 - Keep commit subjects concise and imperative (e.g., “Add oxfmt and oxlint”) and titles under ~60 characters.
 - Isolate unrelated changes.
 - Always run `bun run format` before committing (auto-runs via pre-commit hook).
+- A Husky pre-commit hook runs `bun run check && bun test` automatically on every commit, so you do not need to run `bun run check` or `bun test` manually before committing — the hook will catch any failures.
 - PRs must outline scope, link issues, and attach UI evidence when relevant.
-- Confirm `bun run check` and required builds before requesting review.
 
 ## UI testing
 

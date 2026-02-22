@@ -14,7 +14,7 @@ export interface AgentThreadRuntime {
   session: AgentSession;
 }
 
-const authStorage = new AuthStorage();
+const authStorage = AuthStorage.create();
 const modelRegistry = new ModelRegistry(authStorage);
 const runtimeByThreadPath = new Map<string, Promise<AgentThreadRuntime>>();
 
