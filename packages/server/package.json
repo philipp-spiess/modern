@@ -13,7 +13,7 @@
   "dependencies": {
     "@mariozechner/pi-coding-agent": "^0.52.12",
     "@orpc/server": "^1.13.5",
-    "@preact/signals-core": "^1.12.1",
+    "@preact/signals-core": "^1.13.0",
     "@truto/sqlite-builder": "^1.0.4",
     "@vscode/ripgrep": "^1.17.0",
     "comment-json": "^4.2.3",
