@@ -45,7 +45,7 @@
     "codemirror-shiki": "^0.3.0",
     "dockview": "^5.0.0",
     "lucide-react": "^0.554.0",
-    "motion": "^12.23.24",
+    "motion": "^12.34.3",
     "partysocket": "^1.1.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
