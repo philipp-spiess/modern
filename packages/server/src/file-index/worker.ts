@@ -1,4 +1,6 @@
-import { rgPath } from "@vscode/ripgrep";
+import { rgPath as defaultRgPath } from "@vscode/ripgrep";
+
+const rgPath = process.env.RG_PATH || defaultRgPath;
 import { watch, type FSWatcher } from "fs";
 import { stat } from "fs/promises";
 import path from "path";

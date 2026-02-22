@@ -20,9 +20,15 @@ interface QuickOpenParams {
 }
 
 class FileIndexService {
-  #worker = new Worker(new URL("./worker.ts", import.meta.url).href, {
-    type: "module",
-  });
+  // In compiled binaries, Bun strips the common `src/` prefix from entry points
+  // and transpiles .ts → .js, so the worker ends up at /$bunfs/root/file-index/worker.js.
+  // In dev (bun run), .ts works directly via the relative path.
+  #worker = new Worker(
+    import.meta.url.includes("/$bunfs/")
+      ? new URL("./file-index/worker.js", import.meta.url).href
+      : new URL("./worker.ts", import.meta.url).href,
+    { type: "module" },
+  );
   #requestId = 0;
   #pending = new Map<number, PendingResolver>();
 
@@ -59,13 +65,18 @@ class FileIndexService {
       }
     };
 
-    this.#worker.onerror = (error) => {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.#flushPending(err);
+    this.#worker.onerror = (event) => {
+      const detail =
+        event instanceof ErrorEvent
+          ? `${event.message} (${event.filename}:${event.lineno}:${event.colno})`
+          : String(event);
+      console.error("[FileIndexWorker] onerror:", detail);
+      this.#flushPending(new Error(detail));
     };
 
-    this.#worker.onmessageerror = (error) => {
-      const err = error instanceof Error ? error : new Error(String(error));
+    this.#worker.onmessageerror = (event) => {
+      console.error("[FileIndexWorker] onmessageerror:", event);
+      const err = event instanceof Error ? event : new Error(String(event));
       this.#flushPending(err);
     };
   }
