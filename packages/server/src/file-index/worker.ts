@@ -162,7 +162,7 @@ async function initializeIndex(index: IndexData) {
   index.map.clear();
 
   for (const relPath of paths) {
-    await addEntry(index, relPath);
+    addEntryDirect(index, relPath);
   }
 
   if (index.watcher) {
@@ -257,6 +257,27 @@ async function collectPaths(cwd: string): Promise<string[]> {
   return paths;
 }
 
+/** Add a file from the initial `rg --files` scan (already gitignore-filtered). */
+function addEntryDirect(index: IndexData, relPath: string) {
+  const normalized = normalizePath(relPath);
+  if (!normalized) {
+    return;
+  }
+
+  if (normalized === ".git" || normalized.startsWith(".git/")) {
+    return;
+  }
+
+  if (index.map.has(normalized)) {
+    return;
+  }
+
+  const entry = toEntry(normalized);
+  index.map.set(normalized, entry);
+  index.entries.push(entry);
+}
+
+/** Add a file discovered by the fs watcher — checks gitignore first. */
 async function addEntry(index: IndexData, relPath: string) {
   const normalized = normalizePath(relPath);
   if (!normalized) {
@@ -271,7 +292,6 @@ async function addEntry(index: IndexData, relPath: string) {
     return;
   }
 
-  // Check if file is gitignored before adding to index
   try {
     const ignored = await index.git.checkIgnore(normalized);
     if (ignored.length > 0) {
