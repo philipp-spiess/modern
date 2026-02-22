@@ -32,7 +32,9 @@ const websocket = new ReconnectingWebSocket(() => getWebSocketUrl(currentPort), 
   connectionTimeout: 2_000,
   startClosed: true,
 });
-const link = new RPCLink({ websocket });
+const link = new RPCLink({
+  websocket: websocket as unknown as Pick<WebSocket, "addEventListener" | "readyState" | "send">,
+});
 
 export const client: Client = createORPCClient(link);
 export const orpc = createTanstackQueryUtils(client);
