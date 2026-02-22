@@ -79,7 +79,7 @@ pub fn run() {
             {
                 use objc2_app_kit::{NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSWindow};
                 use objc2_foundation::MainThreadMarker;
-                use window_vibrancy::{apply_liquid_glass, NSGlassEffectViewStyle};
+                use window_vibrancy::{apply_liquid_glass, apply_vibrancy, NSGlassEffectViewStyle, NSVisualEffectMaterial, NSVisualEffectState};
 
                 if let Some(window) = app.get_webview_window("main") {
                     let _mtm = MainThreadMarker::new().expect("must be on main thread");
@@ -92,10 +92,25 @@ pub fn run() {
                             let appearance = NSAppearance::appearanceNamed(NSAppearanceNameDarkAqua)
                                 .expect("failed to get dark appearance");
                             ns_window_ref.setAppearance(Some(&appearance));
-                            // Apply liquid glass effect (macOS 26+) or fall back gracefully
+                            // Apply liquid glass effect (macOS 26+) or fall back to vibrancy
                             ns_window_ref.setOpaque(false);
                             if let Err(e) = apply_liquid_glass(&window, NSGlassEffectViewStyle::Sidebar, None, None) {
                                 eprintln!("Liquid glass not available: {e}");
+                                // Fall back to NSVisualEffectView vibrancy (macOS 10.14+)
+                                if let Err(e2) = apply_vibrancy(
+                                    &window,
+                                    NSVisualEffectMaterial::UnderWindowBackground,
+                                    Some(NSVisualEffectState::Active),
+                                    None,
+                                ) {
+                                    eprintln!("Vibrancy fallback also failed: {e2}, making window opaque");
+                                    ns_window_ref.setOpaque(true);
+                                    ns_window_ref.setBackgroundColor(Some(
+                                        &objc2_app_kit::NSColor::colorWithSRGBRed_green_blue_alpha(
+                                            0.09, 0.09, 0.09, 1.0,
+                                        ),
+                                    ));
+                                }
                             }
                         }
                     }
