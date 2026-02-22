@@ -87,7 +87,9 @@ export const MessageList = memo(function MessageList({
     >
       <div className="flex flex-col gap-1">
         {visibleMessages.map((msg, i) => (
-          <MessageView key={i} message={msg} resultMap={resultMap} isStreamingMsg={false} />
+          <div key={i} className="content-visibility-auto">
+            <MessageView message={msg} resultMap={resultMap} isStreamingMsg={false} />
+          </div>
         ))}
         {streamMessage && <MessageView message={streamMessage} resultMap={resultMap} isStreamingMsg={isStreaming} />}
       </div>

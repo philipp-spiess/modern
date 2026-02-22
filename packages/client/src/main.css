@@ -314,3 +314,9 @@
     font-weight: 600;
   }
 }
+
+/* Skip layout & paint for off-screen chat messages */
+@utility content-visibility-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 150px;
+}

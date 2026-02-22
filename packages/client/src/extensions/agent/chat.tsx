@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 import type { AgentThreadDeliveryMode } from "@moderndev/server/src/extensions/agent/types";
 import { useMutation } from "@tanstack/react-query";
 import { CornerDownLeft, ListPlus, Loader2, Compass, Send, Square } from "lucide-react";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { useStickToBottom } from "use-stick-to-bottom";
+import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { type ScrollToBottom, useStickToBottom } from "use-stick-to-bottom";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { queryClient } from "../../lib/query-client";
 import { client } from "../../lib/rpc";
@@ -21,6 +21,73 @@ import {
 import { FollowUpQueueIndicator, MessageList, SteeringQueueIndicator } from "./messages";
 import { useAgentThread } from "./use-agent-thread";
 
+// ---------------------------------------------------------------------------
+// Scroll area – owns useStickToBottom so that isAtBottom state changes only
+// re-render this component, not the parent (and thus not MessageList).
+// children is a stable React element tree from the parent and is skipped
+// during reconciliation when ChatScrollArea re-renders.
+// ---------------------------------------------------------------------------
+
+function ChatScrollArea({
+  children,
+  scrollToBottomRef,
+  threadPath,
+  hasThreadState,
+}: {
+  children: ReactNode;
+  scrollToBottomRef: React.MutableRefObject<ScrollToBottom | null>;
+  threadPath?: string;
+  hasThreadState: boolean;
+}) {
+  const { contentRef, isAtBottom, scrollRef, scrollToBottom } = useStickToBottom({
+    initial: "instant",
+    resize: "instant",
+  });
+
+  // Expose scrollToBottom to parent via ref so it can call it without
+  // subscribing to isAtBottom re-renders.
+  scrollToBottomRef.current = scrollToBottom;
+
+  // Synchronous scroll-to-bottom on initial thread load.
+  // `use-stick-to-bottom` relies on ResizeObserver (async, fires after paint),
+  // so the very first frame renders without being scrolled down. A layout
+  // effect runs before the browser paints and eliminates the flicker.
+  const scrolledForThread = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (threadPath && hasThreadState && el && scrolledForThread.current !== threadPath) {
+      el.scrollTop = el.scrollHeight;
+      scrolledForThread.current = threadPath;
+    }
+  }, [threadPath, hasThreadState, scrollRef]);
+
+  return (
+    <>
+      <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
+        <div ref={contentRef} className="flex flex-col pb-4">
+          {children}
+        </div>
+      </div>
+
+      {!isAtBottom && (
+        <div className="relative z-10 -mt-10 flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              void scrollToBottom("smooth");
+            }}
+            className="rounded-full border border-white/15 bg-neutral-900/90 px-3 py-1 text-xs text-white/60 shadow-lg backdrop-blur-sm transition-colors hover:text-white/80"
+          >
+            Scroll to bottom
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 interface AgentChatPanelState {
   threadPath?: string;
   mode?: "draft";
@@ -32,23 +99,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
 
   const [draft, setDraft] = useState("");
   const thread = useAgentThread(isDraftThread ? undefined : threadPath);
-  const { contentRef, isAtBottom, scrollRef, scrollToBottom } = useStickToBottom({
-    initial: "instant",
-    resize: "instant",
-  });
-
-  // Synchronous scroll-to-bottom on initial thread load.
-  // `use-stick-to-bottom` relies on ResizeObserver (async, fires after paint),
-  // so the very first frame renders without being scrolled down. A layout
-  // effect runs before the browser paints and eliminates the flicker.
-  const scrolledForThread = useRef<string | undefined>(undefined);
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (threadPath && thread.state && el && scrolledForThread.current !== threadPath) {
-      el.scrollTop = el.scrollHeight;
-      scrolledForThread.current = threadPath;
-    }
-  }, [threadPath, thread.state, scrollRef]);
+  const scrollToBottomRef = useRef<ScrollToBottom | null>(null);
 
   const createThreadFromDraftMutation = useMutation({
     mutationFn: async (text: string) => {
@@ -80,7 +131,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
       }
 
       setDraft("");
-      void scrollToBottom("smooth");
+      scrollToBottomRef.current?.("smooth");
 
       if (isDraftThread) {
         await createThreadFromDraftMutation.mutateAsync(text);
@@ -89,7 +140,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
 
       await thread.send(text, delivery);
     },
-    [createThreadFromDraftMutation, draft, isDraftThread, scrollToBottom, thread],
+    [createThreadFromDraftMutation, draft, isDraftThread, thread],
   );
 
   const handleKeyDown = useCallback(
@@ -115,50 +166,38 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
         </div>
       )}
 
-      <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
-        <div ref={contentRef} className="flex flex-col pb-4">
-          {isDraftThread ? (
-            <div className="flex flex-1 items-center justify-center py-10 text-center text-sm text-white/40">
-              Send your first message to start this thread.
-            </div>
-          ) : thread.isLoading ? (
-            <div className="flex items-center gap-2 py-8 text-sm text-white/40">
-              <Loader2 className="size-4 animate-spin" />
-              Loading thread…
-            </div>
-          ) : thread.state ? (
-            <>
-              <MessageList
-                messages={thread.state.messages}
-                streamMessage={thread.state.streamMessage}
-                isStreaming={isStreaming}
-              />
-              <SteeringQueueIndicator items={steeringQueue} />
-              <FollowUpQueueIndicator items={followUpQueue} />
-              {isStreaming && !thread.state.streamMessage && (
-                <div className="flex items-center gap-2 py-3 text-xs text-white/30">
-                  <span className="size-1.5 animate-pulse rounded-full bg-white/40" />
-                  Thinking…
-                </div>
-              )}
-            </>
-          ) : null}
-        </div>
-      </div>
-
-      {!isAtBottom && (
-        <div className="relative z-10 -mt-10 flex justify-center">
-          <button
-            type="button"
-            onClick={() => {
-              void scrollToBottom("smooth");
-            }}
-            className="rounded-full border border-white/15 bg-neutral-900/90 px-3 py-1 text-xs text-white/60 shadow-lg backdrop-blur-sm transition-colors hover:text-white/80"
-          >
-            Scroll to bottom
-          </button>
-        </div>
-      )}
+      <ChatScrollArea
+        scrollToBottomRef={scrollToBottomRef}
+        threadPath={threadPath}
+        hasThreadState={Boolean(thread.state)}
+      >
+        {isDraftThread ? (
+          <div className="flex flex-1 items-center justify-center py-10 text-center text-sm text-white/40">
+            Send your first message to start this thread.
+          </div>
+        ) : thread.isLoading ? (
+          <div className="flex items-center gap-2 py-8 text-sm text-white/40">
+            <Loader2 className="size-4 animate-spin" />
+            Loading thread…
+          </div>
+        ) : thread.state ? (
+          <>
+            <MessageList
+              messages={thread.state.messages}
+              streamMessage={thread.state.streamMessage}
+              isStreaming={isStreaming}
+            />
+            <SteeringQueueIndicator items={steeringQueue} />
+            <FollowUpQueueIndicator items={followUpQueue} />
+            {isStreaming && !thread.state.streamMessage && (
+              <div className="flex items-center gap-2 py-3 text-xs text-white/30">
+                <span className="size-1.5 animate-pulse rounded-full bg-white/40" />
+                Thinking…
+              </div>
+            )}
+          </>
+        ) : null}
+      </ChatScrollArea>
 
       {hasQueued && (
         <div className="px-3 pt-2">
