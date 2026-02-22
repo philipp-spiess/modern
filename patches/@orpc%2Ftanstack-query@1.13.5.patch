@@ -1,5 +1,5 @@
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 84051d2e2553129ff7ef5e7706192f31ba5ec1fb..b027019c906317498c02e04395991f6d2347b243 100644
+index 1234567890abcdef1234567890abcdef12345678..abcdef1234567890abcdef1234567890abcdef12 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -20,19 +20,30 @@ function createGeneralUtils(path) {
