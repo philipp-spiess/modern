@@ -1,16 +1,17 @@
 import type {
   AgentThreadAbortResult,
   AgentThreadDeliveryMode,
+  AgentThreadMessageTail,
   AgentThreadMetaState,
   AgentThreadSendResult,
   AgentThreadStreamMessage,
   AgentThreadViewState,
   AgentThreadWatchUpdate,
 } from "@moderndev/server/src/extensions/agent/types";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { queryClient } from "../../lib/query-client";
-import { client, orpc } from "../../lib/rpc";
+import { client } from "../../lib/rpc";
 
 type AgentThreadEvent = Extract<AgentThreadWatchUpdate, { kind: "event" }>["event"];
 
@@ -30,48 +31,56 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
   const [state, setState] = useState<AgentThreadViewState | null>(null);
   const [seq, setSeq] = useState(0);
   const [lastEvent, setLastEvent] = useState<AgentThreadEvent | null>(null);
+  const [watchError, setWatchError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const watchQuery = useQuery({
-    ...orpc.agent.threadWatch.experimental_liveOptions({
-      input: { threadPath: threadPath ?? "" },
-      context: { cache: true },
-      retry: true,
-    }),
-    queryKey: ["agent", "thread", "watch", threadPath],
-    enabled: Boolean(threadPath),
-  });
-
-  const incomingUpdate = watchQuery.data as AgentThreadWatchUpdate | undefined;
+  // Mutable ref that holds the latest state. The async iterator loop reads
+  // and writes through this ref so every event is applied sequentially
+  // against the true latest state — no React batching can drop events.
+  const stateRef = useRef<AgentThreadViewState | null>(null);
 
   useEffect(() => {
     if (!threadPath) {
+      stateRef.current = null;
       setState(null);
       setSeq(0);
       setLastEvent(null);
-    }
-  }, [threadPath]);
-
-  useEffect(() => {
-    if (!incomingUpdate) {
+      setWatchError(null);
+      setIsLoading(false);
       return;
     }
 
-    if (incomingUpdate.kind === "snapshot") {
-      setState(incomingUpdate.state);
-      setLastEvent(null);
-    } else {
-      setState((current) => {
-        if (!current) {
-          return current;
+    let cancelled = false;
+    setIsLoading(true);
+    setWatchError(null);
+
+    const run = async () => {
+      try {
+        const iterator = await client.agent.threadWatch({ threadPath });
+
+        // consumeEventIterator is overkill — just iterate directly.
+        // The `client.agent.threadWatch` call returns an async iterator.
+        for await (const update of iterator) {
+          if (cancelled) break;
+
+          const typed = update as AgentThreadWatchUpdate;
+          processUpdate(typed, stateRef, setState, setSeq, setLastEvent);
+          setIsLoading(false);
         }
+      } catch (err) {
+        if (!cancelled) {
+          setWatchError(err instanceof Error ? err : new Error(String(err)));
+          setIsLoading(false);
+        }
+      }
+    };
 
-        return applyThreadMetaState(applyThreadEvent(current, incomingUpdate.event), incomingUpdate.meta);
-      });
-      setLastEvent(incomingUpdate.event);
-    }
+    void run();
 
-    setSeq(incomingUpdate.seq);
-  }, [incomingUpdate]);
+    return () => {
+      cancelled = true;
+    };
+  }, [threadPath]);
 
   const sendMutation = useMutation({
     mutationFn: async ({ text, delivery }: { text: string; delivery?: AgentThreadDeliveryMode }) => {
@@ -115,13 +124,13 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
     return result;
   }, [abortMutation]);
 
-  const error = (watchQuery.error ?? sendMutation.error ?? abortMutation.error ?? null) as Error | null;
+  const error = (watchError ?? sendMutation.error ?? abortMutation.error ?? null) as Error | null;
 
   return {
     state,
     seq,
     lastEvent,
-    isLoading: watchQuery.isPending && state === null,
+    isLoading: isLoading && state === null,
     isSending: sendMutation.isPending,
     isAborting: abortMutation.isPending,
     error,
@@ -130,6 +139,51 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Event processing — runs inside the async iterator loop, applies every
+// update against stateRef (mutable) so nothing is ever skipped by React
+// batching.  React setState calls are made for each update to trigger
+// re-renders, but the source of truth is always the ref.
+// ---------------------------------------------------------------------------
+
+function processUpdate(
+  update: AgentThreadWatchUpdate,
+  stateRef: React.MutableRefObject<AgentThreadViewState | null>,
+  setState: React.Dispatch<React.SetStateAction<AgentThreadViewState | null>>,
+  setSeq: React.Dispatch<React.SetStateAction<number>>,
+  setLastEvent: React.Dispatch<React.SetStateAction<AgentThreadEvent | null>>,
+) {
+  if (update.kind === "snapshot") {
+    stateRef.current = update.state;
+    setState(update.state);
+    setLastEvent(null);
+  } else {
+    const current = stateRef.current;
+    if (!current) return;
+
+    let next = applyThreadEvent(current, update.event);
+    next = applyThreadMetaState(next, update.meta);
+
+    if (update.messageTail) {
+      next = applyMessageTail(next, update.messageTail);
+    }
+
+    if ("streamMessage" in update) {
+      next = { ...next, streamMessage: update.streamMessage ?? null };
+    }
+
+    stateRef.current = next;
+    setState(next);
+    setLastEvent(update.event);
+  }
+
+  setSeq(update.seq);
+}
+
+// ---------------------------------------------------------------------------
+// Pure state helpers
+// ---------------------------------------------------------------------------
+
 function applyThreadMetaState(state: AgentThreadViewState, meta: AgentThreadMetaState): AgentThreadViewState {
   return {
     ...state,
@@ -137,6 +191,15 @@ function applyThreadMetaState(state: AgentThreadViewState, meta: AgentThreadMeta
   };
 }
 
+/**
+ * Apply a single event to the view state.
+ *
+ * Handles transient streaming state (`streamMessage`) and best-effort
+ * incremental `message_end` appends.  The authoritative message list is
+ * reconciled via `applyMessageTail` on checkpoint events (`turn_end`,
+ * `agent_end`), so even if a `message_end` were somehow missed the
+ * checkpoint corrects it.
+ */
 function applyThreadEvent(state: AgentThreadViewState, event: AgentThreadEvent): AgentThreadViewState {
   switch (event.type) {
     case "message_start": {
@@ -169,24 +232,8 @@ function applyThreadEvent(state: AgentThreadViewState, event: AgentThreadEvent):
       };
     }
 
-    case "turn_end": {
-      return appendMissingMessages(state, [event.message, ...event.toolResults]);
-    }
-
     case "agent_end": {
-      const withClearedStream =
-        state.streamMessage === null
-          ? state
-          : {
-              ...state,
-              streamMessage: null,
-            };
-
-      if (event.messages.length === 0) {
-        return withClearedStream;
-      }
-
-      return appendMissingMessages(withClearedStream, event.messages);
+      return state.streamMessage === null ? state : { ...state, streamMessage: null };
     }
 
     default:
@@ -194,39 +241,24 @@ function applyThreadEvent(state: AgentThreadViewState, event: AgentThreadEvent):
   }
 }
 
-function appendMissingMessages(
-  state: AgentThreadViewState,
-  incoming: AgentThreadViewState["messages"],
-): AgentThreadViewState {
-  const seen = new Set(state.messages.map(getMessageKey));
-  const missing = incoming.filter((message) => !seen.has(getMessageKey(message)));
+/**
+ * Splice authoritative messages from a server checkpoint into the view state.
+ *
+ * `fromIndex` is the snapshot boundary.  The tail contains every message added
+ * since that snapshot.  `messages.slice(0, fromIndex).concat(tail)` is
+ * idempotent regardless of what the client already appended via `message_end`.
+ * `fromIndex = 0` is a full reset (used after compaction).
+ */
+function applyMessageTail(state: AgentThreadViewState, tail: AgentThreadMessageTail): AgentThreadViewState {
+  const base = state.messages.slice(0, tail.fromIndex);
+  const merged = base.concat(tail.messages);
 
-  if (missing.length === 0) {
+  if (merged.length === state.messages.length) {
     return state;
   }
 
   return {
     ...state,
-    messages: [...state.messages, ...missing],
+    messages: merged,
   };
-}
-
-function getMessageKey(message: AgentThreadViewState["messages"][number]): string {
-  if (message.role === "toolResult") {
-    return `${message.role}:${message.timestamp}:${message.toolCallId}`;
-  }
-
-  if (message.role === "assistant") {
-    return `${message.role}:${message.timestamp}:${message.stopReason}:${message.model}`;
-  }
-
-  if (message.role === "custom") {
-    return `${message.role}:${message.timestamp}:${message.customType}`;
-  }
-
-  if (message.role === "bashExecution") {
-    return `${message.role}:${message.timestamp}:${message.command}`;
-  }
-
-  return `${message.role}:${message.timestamp}`;
 }

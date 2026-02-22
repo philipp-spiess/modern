@@ -26,6 +26,20 @@ export interface AgentThreadViewState extends AgentThreadMetaState {
   streamMessage: AgentThreadStreamMessage;
 }
 
+/**
+ * Incremental message sync payload, included on checkpoint events.
+ *
+ * `fromIndex` is the boundary: the client keeps its first `fromIndex` messages
+ * untouched and replaces everything from that point onward with `messages`.
+ *
+ * - Normal checkpoint: `fromIndex = snapshotMessageCount`, carries only new messages.
+ * - Full reset (compaction): `fromIndex = 0`, carries the entire message list.
+ */
+export interface AgentThreadMessageTail {
+  fromIndex: number;
+  messages: AgentThreadMessages;
+}
+
 export type AgentThreadWatchUpdate =
   | {
       kind: "snapshot";
@@ -37,6 +51,10 @@ export type AgentThreadWatchUpdate =
       seq: number;
       event: AgentSessionEvent;
       meta: AgentThreadMetaState;
+      /** Authoritative message tail from the server, included on checkpoint events. */
+      messageTail?: AgentThreadMessageTail;
+      /** Authoritative stream message from the server, included on checkpoint events to clear stale streams. */
+      streamMessage?: AgentThreadStreamMessage | null;
     };
 
 export type AgentThreadDeliveryMode = "auto" | "steer" | "followUp";

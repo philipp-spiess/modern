@@ -7,6 +7,7 @@ import { listThreadsForWorkspace, type WorkspaceThreads } from "./threads";
 import type {
   AgentThreadAbortResult,
   AgentThreadDeliveryMode,
+  AgentThreadMessageTail,
   AgentThreadSendResult,
   AgentThreadWatchUpdate,
 } from "./types";
@@ -58,27 +59,56 @@ export const listWorkspaceThreads = os
     return { workspaces: entries };
   });
 
+/** Event types where we include an authoritative message tail for reliable sync. */
+const CHECKPOINT_EVENTS = new Set(["turn_end", "agent_end", "auto_compaction_end", "auto_retry_end"]);
+
 export const watchThread = os.input(threadInputSchema).handler(async function* ({ input }) {
   const runtime = await getThreadRuntime(input.threadPath);
   const { session } = runtime;
 
   let seq = 1;
+  const snapshotState = getThreadViewState(runtime);
+  const snapshotMessageCount = snapshotState.messages.length;
+
   yield {
     kind: "snapshot",
     seq: seq++,
-    state: getThreadViewState(runtime),
+    state: snapshotState,
   } satisfies AgentThreadWatchUpdate;
 
   const updates: AgentThreadWatchUpdate[] = [];
   let resolve: (() => void) | null = null;
 
   const unsubscribe = session.subscribe((event) => {
-    updates.push({
+    const isCheckpoint = CHECKPOINT_EVENTS.has(event.type);
+    const isCompactionReset = event.type === "auto_compaction_end";
+
+    let messageTail: AgentThreadMessageTail | undefined;
+    if (isCheckpoint) {
+      const allMessages = session.messages;
+      const fromIndex = isCompactionReset ? 0 : snapshotMessageCount;
+      messageTail = {
+        fromIndex,
+        messages: structuredClone(allMessages.slice(fromIndex)),
+      };
+    }
+
+    const update: AgentThreadWatchUpdate = {
       kind: "event",
       seq: seq++,
       event,
       meta: getThreadMetaState(runtime),
-    });
+    };
+
+    if (messageTail) {
+      update.messageTail = messageTail;
+    }
+
+    if (isCheckpoint) {
+      update.streamMessage = session.state.streamMessage ? structuredClone(session.state.streamMessage) : null;
+    }
+
+    updates.push(update);
 
     if (!resolve) {
       return;
