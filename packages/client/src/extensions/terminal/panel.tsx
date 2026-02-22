@@ -74,7 +74,6 @@ export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelPro
       cursorStyle: "block",
       cursorInactiveStyle: "outline",
       drawBoldTextInBrightColors: true,
-      fastScrollModifier: "alt",
       fastScrollSensitivity: 5,
       fontFamily: `${editorSettings.fontFamily}, monospace`,
       fontSize: editorSettings.fontSize,
