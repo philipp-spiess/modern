@@ -26,3 +26,7 @@ tsconfig.tsbuildinfo
 
 # Rust
 /target/
+
+# Copied from node_modules during server postbuild
+src-tauri/pi-agent/
+src-tauri/binaries/rg

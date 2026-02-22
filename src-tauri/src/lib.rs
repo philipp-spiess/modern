@@ -80,6 +80,15 @@ fn get_server_info(state: State<'_, ServerState>) -> Result<ServerInfo, String> 
 }
 
 #[tauri::command]
+fn toggle_devtools(window: tauri::WebviewWindow) {
+    if window.is_devtools_open() {
+        window.close_devtools();
+    } else {
+        window.open_devtools();
+    }
+}
+
+#[tauri::command]
 fn get_cwd() -> Result<String, String> {
     if let Ok(pwd) = std::env::var("PWD") {
         return Ok(pwd);
@@ -142,24 +151,19 @@ pub fn run() {
                 }
             }
 
-            // Open devtools in prod so we can inspect webview console
-            #[cfg(not(debug_assertions))]
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
-            }
-
             if cfg!(debug_assertions) {
                 spawn_dev_server(app.handle());
             } else {
                 let handle = app.handle().clone();
 
-                // Resolve the bundled pi-agent/package.json so the compiled server
-                // binary can read APP_NAME / VERSION / piConfig from it.
-                let pi_package_dir = app
+                let resource_dir = app
                     .path()
                     .resource_dir()
-                    .expect("Failed to resolve resource dir")
-                    .join("pi-agent");
+                    .expect("Failed to resolve resource dir");
+
+                // Resolve bundled paths for the compiled server sidecar.
+                let pi_package_dir = resource_dir.join("pi-agent");
+                let rg_path = resource_dir.join("binaries").join("rg");
 
                 tauri::async_runtime::spawn(async move {
                     let (mut rx, _child) = handle
@@ -167,6 +171,7 @@ pub fn run() {
                         .sidecar("server")
                         .expect("Failed to create server sidecar command")
                         .env("PI_PACKAGE_DIR", pi_package_dir.to_string_lossy().as_ref())
+                        .env("RG_PATH", rg_path.to_string_lossy().as_ref())
                         .spawn()
                         .expect("Failed to spawn server sidecar");
 
@@ -218,6 +223,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_cwd,
             get_server_info,
+            toggle_devtools,
             terminal::spawn_pty,
             terminal::write_to_pty,
             terminal::resize_pty,
