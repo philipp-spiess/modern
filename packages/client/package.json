@@ -44,7 +44,7 @@
     "cmdk": "^1.1.1",
     "codemirror-shiki": "^0.3.0",
     "dockview": "^5.0.0",
-    "lucide-react": "^0.554.0",
+    "lucide-react": "^0.575.0",
     "motion": "^12.34.3",
     "partysocket": "^1.1.14",
     "react": "^19.2.4",
