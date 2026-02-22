@@ -16,8 +16,8 @@
     "@preact/signals-core": "^1.13.0",
     "@truto/sqlite-builder": "^1.0.4",
     "@vscode/ripgrep": "^1.17.0",
-    "comment-json": "^4.2.3",
-    "simple-git": "^3.30.0",
+    "comment-json": "^4.5.1",
+    "simple-git": "^3.32.1",
     "vscode-uri": "^3.1.0",
     "zod": "^4.3.6"
   },
