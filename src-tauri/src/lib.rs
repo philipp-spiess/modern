@@ -9,6 +9,7 @@ mod terminal;
 
 pub struct ServerState {
     port: Mutex<Option<u16>>,
+    token: Mutex<Option<String>>,
     child: Mutex<Option<CommandChild>>,
 }
 
@@ -16,6 +17,7 @@ impl ServerState {
     fn new() -> Self {
         Self {
             port: Mutex::new(None),
+            token: Mutex::new(None),
             child: Mutex::new(None),
         }
     }
@@ -26,14 +28,30 @@ impl ServerState {
         }
     }
 
+    fn set_token(&self, token: String) {
+        if let Ok(mut guard) = self.token.lock() {
+            *guard = Some(token);
+        }
+    }
+
     fn clear_port(&self) {
         if let Ok(mut guard) = self.port.lock() {
             *guard = None;
         }
     }
 
+    fn clear_token(&self) {
+        if let Ok(mut guard) = self.token.lock() {
+            *guard = None;
+        }
+    }
+
     fn port(&self) -> Option<u16> {
         self.port.lock().ok().and_then(|guard| *guard)
+    }
+
+    fn token(&self) -> Option<String> {
+        self.token.lock().ok().and_then(|guard| guard.clone())
     }
 
     fn set_child(&self, child: CommandChild) {
@@ -47,11 +65,18 @@ impl ServerState {
     }
 }
 
+#[derive(Clone, serde::Serialize)]
+struct ServerInfo {
+    port: u16,
+    token: String,
+}
+
 #[tauri::command]
-fn get_server_port(state: State<'_, ServerState>) -> Result<u16, String> {
-    state
-        .port()
-        .ok_or_else(|| "Server not ready".to_string())
+fn get_server_info(state: State<'_, ServerState>) -> Result<ServerInfo, String> {
+    match (state.port(), state.token()) {
+        (Some(port), Some(token)) => Ok(ServerInfo { port, token }),
+        _ => Err("Server not ready".to_string()),
+    }
 }
 
 #[tauri::command]
@@ -117,15 +142,31 @@ pub fn run() {
                 }
             }
 
+            // Open devtools in prod so we can inspect webview console
+            #[cfg(not(debug_assertions))]
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
+            }
+
             if cfg!(debug_assertions) {
                 spawn_dev_server(app.handle());
             } else {
                 let handle = app.handle().clone();
+
+                // Resolve the bundled pi-agent/package.json so the compiled server
+                // binary can read APP_NAME / VERSION / piConfig from it.
+                let pi_package_dir = app
+                    .path()
+                    .resource_dir()
+                    .expect("Failed to resolve resource dir")
+                    .join("pi-agent");
+
                 tauri::async_runtime::spawn(async move {
                     let (mut rx, _child) = handle
                         .shell()
                         .sidecar("server")
                         .expect("Failed to create server sidecar command")
+                        .env("PI_PACKAGE_DIR", pi_package_dir.to_string_lossy().as_ref())
                         .spawn()
                         .expect("Failed to spawn server sidecar");
 
@@ -139,16 +180,17 @@ pub fn run() {
                                     continue;
                                 }
 
-                                if let Some(port) = extract_port(line) {
+                                if let Some(info) = extract_server_info(line) {
                                     if let Some(state) = handle.try_state::<ServerState>() {
-                                        state.set_port(port);
+                                        state.set_port(info.port);
+                                        state.set_token(info.token.clone());
                                     }
 
-                                    if let Err(err) = handle.emit("server-port-changed", &port) {
-                                        eprintln!("Failed to emit port change event: {err}");
+                                    if let Err(err) = handle.emit("server-info-changed", &info) {
+                                        eprintln!("Failed to emit server info event: {err}");
                                     }
 
-                                    println!("Server listening on port {port}");
+                                    println!("Server listening on port {}", info.port);
                                     continue;
                                 }
 
@@ -175,7 +217,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_cwd,
-            get_server_port,
+            get_server_info,
             terminal::spawn_pty,
             terminal::write_to_pty,
             terminal::resize_pty,
@@ -192,6 +234,7 @@ fn spawn_dev_server(handle: &tauri::AppHandle) {
             let _ = old_child.kill();
         }
         state.clear_port();
+        state.clear_token();
     }
 
     println!("Starting dev server...");
@@ -220,16 +263,17 @@ fn spawn_dev_server(handle: &tauri::AppHandle) {
                         continue;
                     }
 
-                    if let Some(port) = extract_port(line) {
+                    if let Some(info) = extract_server_info(line) {
                         if let Some(state) = handle.try_state::<ServerState>() {
-                            state.set_port(port);
+                            state.set_port(info.port);
+                            state.set_token(info.token.clone());
                         }
 
-                        if let Err(err) = handle.emit("server-port-changed", &port) {
-                            eprintln!("Failed to emit port change event: {err}");
+                        if let Err(err) = handle.emit("server-info-changed", &info) {
+                            eprintln!("Failed to emit server info event: {err}");
                         }
 
-                        println!("Server listening on port {port}");
+                        println!("Server listening on port {}", info.port);
                         continue;
                     }
 
@@ -253,10 +297,10 @@ fn spawn_dev_server(handle: &tauri::AppHandle) {
     });
 }
 
-fn extract_port(line: &str) -> Option<u16> {
+fn extract_server_info(line: &str) -> Option<ServerInfo> {
     let maybe_json = line.strip_prefix("Server: ").unwrap_or(line);
-    serde_json::from_str::<Value>(maybe_json)
-        .ok()
-        .and_then(|json| json.get("port").and_then(|p| p.as_u64()))
-        .and_then(|port| u16::try_from(port).ok())
+    let json: Value = serde_json::from_str(maybe_json).ok()?;
+    let port = json.get("port").and_then(|p| p.as_u64()).and_then(|p| u16::try_from(p).ok())?;
+    let token = json.get("token").and_then(|t| t.as_str()).map(String::from)?;
+    Some(ServerInfo { port, token })
 }

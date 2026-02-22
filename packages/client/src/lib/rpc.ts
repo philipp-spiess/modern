@@ -7,23 +7,29 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { WebSocket as ReconnectingWebSocket } from "partysocket";
 
-async function waitForPort(): Promise<number> {
+interface ServerInfo {
+  port: number;
+  token: string;
+}
+
+async function waitForServerInfo(): Promise<ServerInfo> {
   const maxAttempts = 200;
   const delayMs = 50;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      return await invoke<number>("get_server_port");
+      return await invoke<ServerInfo>("get_server_info");
     } catch {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
 
-  throw new Error("Timed out waiting for WebSocket RPC port");
+  throw new Error("Timed out waiting for server info");
 }
 
-const wsPort = await waitForPort();
-let currentPort = wsPort;
+const serverInfo = await waitForServerInfo();
+let currentPort = serverInfo.port;
+let currentToken = serverInfo.token;
 const websocket = new ReconnectingWebSocket(() => getWebSocketUrl(currentPort), undefined, {
   minReconnectionDelay: 100,
   maxReconnectionDelay: 500,
@@ -47,21 +53,22 @@ let reconnecting = false;
 const controlledSocket = websocket as ReconnectingWebSocket & { _shouldReconnect?: boolean };
 
 try {
-  await listen<number>("server-port-changed", (event) => {
-    const nextPort = event.payload;
-    if (typeof nextPort !== "number" || nextPort <= 0) {
+  await listen<ServerInfo>("server-info-changed", (event) => {
+    const info = event.payload;
+    if (!info || typeof info.port !== "number" || info.port <= 0 || typeof info.token !== "string") {
       return;
     }
 
-    if (nextPort === currentPort) {
+    if (info.port === currentPort && info.token === currentToken) {
       return;
     }
 
-    currentPort = nextPort;
+    currentPort = info.port;
+    currentToken = info.token;
     scheduleReconnect();
   });
 } catch (error) {
-  console.error("Failed to subscribe to server port changes", error);
+  console.error("Failed to subscribe to server info changes", error);
 }
 
 // Trigger the first connection explicitly.
@@ -145,7 +152,7 @@ function waitForSocketOpen(socket: ReconnectingWebSocket): Promise<void> {
 }
 
 function getWebSocketUrl(port: number) {
-  return `ws://127.0.0.1:${port}/`;
+  return `ws://127.0.0.1:${port}/?token=${currentToken}`;
 }
 
 function enableAutoReconnect() {

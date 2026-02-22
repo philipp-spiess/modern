@@ -1,9 +1,12 @@
+import { randomBytes } from "node:crypto";
 import { onError, type RouterClient } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/bun-ws";
 import { serve } from "bun";
 import { router } from "./router";
 
 export type Client = RouterClient<typeof router>;
+
+const authToken = randomBytes(32).toString("hex");
 
 let activeConnections = 0;
 let shutdownTimer: Timer | undefined;
@@ -28,7 +31,12 @@ const handler = new RPCHandler(router, {
 
 const server = serve({
   port: process.env.PORT ?? 0,
+  hostname: "127.0.0.1",
   fetch(req, server) {
+    const url = new URL(req.url);
+    if (url.searchParams.get("token") !== authToken) {
+      return new Response("Unauthorized", { status: 401 });
+    }
     if (server.upgrade(req)) return;
     return new Response("Upgrade failed", { status: 500 });
   },
@@ -48,6 +56,6 @@ const server = serve({
   },
 });
 
-console.log(JSON.stringify({ port: server.port }));
+console.log(JSON.stringify({ port: server.port, token: authToken }));
 
 scheduleShutdown();
