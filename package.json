@@ -21,6 +21,9 @@
     "oxfmt": "^0.34.0",
     "oxlint": "^1.49.0"
   },
+  "overrides": {
+    "shiki": "^3.22.0"
+  },
   "packageManager": "bun@1.3.0",
   "patchedDependencies": {
     "@orpc/tanstack-query@1.13.5": "patches/@orpc%2Ftanstack-query@1.13.5.patch"
