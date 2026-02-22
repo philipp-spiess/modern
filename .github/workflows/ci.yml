@@ -32,6 +32,8 @@ jobs:
 
       - name: Install Dependencies
         run: bun install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check & Lint
         run: bun run check
