@@ -1,0 +1,77 @@
+name: Nightly Release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 13 * * *" # Runs at 1:00 PM UTC every day
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for new commits since last nightly
+        id: check
+        run: |
+          LAST_NIGHTLY_SHA=$(git rev-list --tags='nightly-v*' --max-count=1 2>/dev/null || true)
+          HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$LAST_NIGHTLY_SHA" = "$HEAD_SHA" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "No new commits since last nightly ($HEAD_SHA), skipping."
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "New commits found (last nightly: ${LAST_NIGHTLY_SHA:-none}, HEAD: $HEAD_SHA)."
+          fi
+
+      - name: Setup Bun
+        if: steps.check.outputs.skip != 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Setup Rust
+        if: steps.check.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Rust Cache
+        if: steps.check.outputs.skip != 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Dependencies
+        if: steps.check.outputs.skip != 'true'
+        run: bun install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current date
+        if: steps.check.outputs.skip != 'true'
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Build and Release
+        if: steps.check.outputs.skip != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: nightly-v${{ steps.date.outputs.date }}
+          releaseName: "Nightly Build v${{ steps.date.outputs.date }}"
+          body: "Nightly build based on the latest changes."
+          includeUpdaterJson: true
+          draft: false
+          prerelease: true
