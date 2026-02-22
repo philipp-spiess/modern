@@ -6,8 +6,21 @@ import tauriBrowserProxy from "vite-plugin-tauri-in-the-browser";
 
 const host = process.env.TAURI_DEV_HOST;
 
+// Tauri serves assets via tauri:// custom protocol which doesn't set CORS
+// headers. Vite 7 hardcodes crossorigin on injected script/link tags, causing
+// WKWebView to silently block them. This plugin strips the attribute.
+function stripCrossorigin(): import("vite").Plugin {
+  return {
+    name: "strip-crossorigin",
+    enforce: "post",
+    transformIndexHtml(html) {
+      return html.replace(/ crossorigin/g, "");
+    },
+  };
+}
+
 export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss(), tauriBrowserProxy() as any],
+  plugins: [react(), tailwindcss(), tauriBrowserProxy() as any, stripCrossorigin()],
 
   resolve: {
     alias: {
