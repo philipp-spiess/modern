@@ -22,6 +22,5 @@
     /* Tauri */
     "composite": true,
     "allowSyntheticDefaultImports": true
-  },
+  }
 }
-

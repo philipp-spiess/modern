@@ -9,9 +9,9 @@ export interface TypedEventEmitter<Events extends Record<string, unknown>> {
   removeEventListener<K extends keyof Events>(event: K, listener: (payload: Events[K]) => void): void;
 }
 
-export class TypedEmitter<Events extends Record<string, unknown> = Record<string, never>>
-  implements TypedEventEmitter<Events>
-{
+export class TypedEmitter<
+  Events extends Record<string, unknown> = Record<string, never>,
+> implements TypedEventEmitter<Events> {
   #listeners = new Map<
     keyof Events,
     Set<{

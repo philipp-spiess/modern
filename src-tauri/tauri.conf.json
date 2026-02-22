@@ -40,11 +40,7 @@
         {
           "identifier": "rpc-events",
           "windows": ["*"],
-          "permissions": [
-            "core:event:allow-listen",
-            "core:event:allow-unlisten",
-            "core:event:allow-emit"
-          ]
+          "permissions": ["core:event:allow-listen", "core:event:allow-unlisten", "core:event:allow-emit"]
         },
         {
           "identifier": "window-destroy",
@@ -67,13 +63,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "resources": ["icon-assets/Assets.car"],
     "macOS": {
       "infoPlist": "Info.plist"
