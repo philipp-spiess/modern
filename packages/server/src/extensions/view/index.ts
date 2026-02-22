@@ -48,6 +48,16 @@ export default createExtension(() => {
 
   disposables.push(
     modern.commands.registerCommand(
+      "view.toggleDevTools",
+      () => {
+        // Implemented in the client
+      },
+      { title: "Toggle Developer Tools" },
+    ),
+  );
+
+  disposables.push(
+    modern.commands.registerCommand(
       "app.restart-server",
       () => {
         process.exit(0);

@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { ElCommandList, ElCommandPalette, ElDialog, ElDialogPanel } from "@tailwindplus/elements/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -107,6 +108,10 @@ export default function CommandPalette({ cwd, onShowSplash }: CommandPaletteProp
       }
       if (commandId === "view.splash.open") {
         onShowSplash?.();
+        return;
+      }
+      if (commandId === "view.toggleDevTools") {
+        void invoke("toggle_devtools");
         return;
       }
       await client.commands.run({ command: commandId });

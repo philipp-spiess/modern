@@ -1,4 +1,5 @@
 import type { WorkspaceThreadSelection } from "@moderndev/server/src/state";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Menu, MenuItem, Submenu, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -68,6 +69,10 @@ function App() {
     }
     if (command === "view.splash.open") {
       showSplash();
+      return;
+    }
+    if (command === "view.toggleDevTools") {
+      void invoke("toggle_devtools");
       return;
     }
     await client.commands.run({ command });
