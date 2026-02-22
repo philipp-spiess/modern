@@ -13,10 +13,6 @@
     "check": "concurrently -n fmt,lint,ts 'oxfmt --check .' 'bun run lint' 'bun run --workspaces check'",
     "prepare": "husky"
   },
-  "dependencies": {
-    "@tauri-apps/plugin-shell": "~2",
-    "ai": "^5.0.98"
-  },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@typescript/native-preview": "^7.0.0-dev.20260222.1",
