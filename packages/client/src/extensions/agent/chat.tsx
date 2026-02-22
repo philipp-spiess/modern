@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import type { AgentThreadDeliveryMode } from "@moderndev/server/src/extensions/agent/types";
 import { useMutation } from "@tanstack/react-query";
 import { CornerDownLeft, ListPlus, Loader2, Compass, Send, Square } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { queryClient } from "../../lib/query-client";
@@ -36,6 +36,19 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
     initial: "instant",
     resize: "instant",
   });
+
+  // Synchronous scroll-to-bottom on initial thread load.
+  // `use-stick-to-bottom` relies on ResizeObserver (async, fires after paint),
+  // so the very first frame renders without being scrolled down. A layout
+  // effect runs before the browser paints and eliminates the flicker.
+  const scrolledForThread = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (threadPath && thread.state && el && scrolledForThread.current !== threadPath) {
+      el.scrollTop = el.scrollHeight;
+      scrolledForThread.current = threadPath;
+    }
+  }, [threadPath, thread.state, scrollRef]);
 
   const createThreadFromDraftMutation = useMutation({
     mutationFn: async (text: string) => {
