@@ -422,7 +422,7 @@ function InlineCodeBlock({ content, language }: { content: string; language: str
         file={{ name: filename, contents: content }}
         options={{
           theme: "vitesse-dark",
-          overflow: "scroll",
+          overflow: "wrap",
           disableFileHeader: true,
           disableLineNumbers: true,
           unsafeCSS: DIFFS_CSS,
@@ -517,7 +517,7 @@ function BashToolView({
         <TerminalIcon
           className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
         />
-        <span className="shrink-0 text-xs font-medium text-white/70">Shell</span>
+        <span className="shrink-0 text-xs font-medium text-white/70">Bash</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{command ?? ""}</span>
         {status === "error" && (
           <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
@@ -631,7 +631,7 @@ function BashExecutionView({ message }: { message: BashExecutionMessage }) {
     >
       <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]">
         <TerminalIcon className="size-3.5 shrink-0 text-white/50" />
-        <span className="shrink-0 text-xs font-medium text-white/70">Shell</span>
+        <span className="shrink-0 text-xs font-medium text-white/70">Bash</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{message.command}</span>
         {message.cancelled && (
           <span className="shrink-0 rounded bg-yellow-500/15 px-1.5 py-0.5 text-[11px] font-medium text-yellow-400">
