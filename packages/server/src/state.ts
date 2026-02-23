@@ -1,5 +1,7 @@
+import { ORPCError } from "@orpc/server";
 import { type Signal, signal } from "@preact/signals-core";
 import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import agentExtension, { id as agentExtensionId } from "./extensions/agent";
 import filesExtension, { id as filesExtensionId } from "./extensions/files";
@@ -321,6 +323,23 @@ function resolveWorkspaceCwd(cwd?: string): string | null {
   return getActiveWorkspaceCwd();
 }
 
+async function assertGitWorkspace(cwd: string): Promise<void> {
+  try {
+    await stat(path.join(cwd, ".git"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new ORPCError("BAD_REQUEST", {
+        message: `Workspace "${cwd}" is not a git repository (.git is missing).`,
+      });
+    }
+
+    throw new ORPCError("INTERNAL_SERVER_ERROR", {
+      message: `Failed to verify git repository for workspace "${cwd}".`,
+      cause: error,
+    });
+  }
+}
+
 function normalizeThreadSelection(cwd: string, input: WorkspaceThreadSelection): WorkspaceThreadSelection {
   const title = input.title?.trim();
 
@@ -434,6 +453,8 @@ export async function openWorkspace(cwd: string) {
   if (getActiveWorkspaceCwd() === resolvedCwd) {
     return;
   }
+
+  await assertGitWorkspace(resolvedCwd);
 
   openWorkspacePromise = (async () => {
     state.workspaces.value = withActiveWorkspace(resolvedCwd);

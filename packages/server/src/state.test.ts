@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
   __resetStateForTests,
   attachPanel,
   closeTab,
   detachPanel,
   getWorkspaceActiveThread,
+  openWorkspace,
   Panel,
   setWorkspaceActiveThread,
   state,
@@ -222,5 +226,38 @@ describe("tabs", () => {
       expect(getWorkspaceActiveThread(workspace)).toBeNull();
       expect(state.activeThread.value).toBeNull();
     });
+  });
+});
+
+describe("openWorkspace", () => {
+  const createdPaths: string[] = [];
+
+  afterEach(async () => {
+    __resetStateForTests();
+    await Promise.all(
+      createdPaths.splice(0).map((cwd) =>
+        rm(cwd, { recursive: true, force: true }).catch(() => {
+          // Ignore cleanup errors in tests.
+        }),
+      ),
+    );
+  });
+
+  test("throws when .git is missing", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "modern-open-workspace-no-git-"));
+    createdPaths.push(workspace);
+
+    await expect(openWorkspace(workspace)).rejects.toThrow(/not a git repository/i);
+  });
+
+  test("opens workspace when .git exists", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "modern-open-workspace-git-"));
+    createdPaths.push(workspace);
+    await mkdir(path.join(workspace, ".git"), { recursive: true });
+
+    await openWorkspace(workspace);
+
+    expect(state.workspaces.value.active).toBe(path.resolve(workspace));
+    expect(state.workspaces.value.open).toContain(path.resolve(workspace));
   });
 });
