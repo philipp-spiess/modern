@@ -517,9 +517,9 @@ function BashToolView({
   return (
     <Collapsible
       defaultOpen={false}
-      className="group not-prose w-full overflow-hidden rounded-lg border border-white/8 transition-colors hover:border-white/15"
+      className="group not-prose w-full overflow-hidden rounded-lg border border-white/8 transition-colors hover:border-white/10"
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]">
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.02]">
         <TerminalIcon
           className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
         />
@@ -633,9 +633,9 @@ function BashExecutionView({ message }: { message: BashExecutionMessage }) {
   return (
     <Collapsible
       defaultOpen={false}
-      className="group not-prose w-full overflow-hidden rounded-lg border border-white/8 transition-colors hover:border-white/15"
+      className="group not-prose w-full overflow-hidden rounded-lg border border-white/8 transition-colors hover:border-white/10"
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]">
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.02]">
         <TerminalIcon className="size-3.5 shrink-0 text-white/50" />
         <span className="shrink-0 text-xs font-medium text-white/70">Bash</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{message.command}</span>
