@@ -7,7 +7,7 @@ import {
   SessionManager,
   type AgentSession,
 } from "@mariozechner/pi-coding-agent";
-import type { AgentThreadMetaState, AgentThreadModelSummary, AgentThreadViewState } from "./types";
+import type { AgentThreadMetaState, AgentThreadModelSummary, AgentThreadViewState, AvailableModelInfo } from "./types";
 
 export interface AgentThreadRuntime {
   threadPath: string;
@@ -113,7 +113,36 @@ export function getThreadMetaState(runtime: AgentThreadRuntime): AgentThreadMeta
     followUpMode: session.followUpMode,
     model: toModelSummary(session),
     thinkingLevel: session.thinkingLevel,
+    supportsThinking: session.supportsThinking(),
+    availableThinkingLevels: session.getAvailableThinkingLevels(),
   };
+}
+
+export function listAvailableModels(): AvailableModelInfo[] {
+  return modelRegistry.getAvailable().map((m) => ({
+    provider: m.provider,
+    id: m.id,
+    name: m.name ?? m.id,
+    reasoning: m.reasoning,
+  }));
+}
+
+export async function setThreadModel(
+  runtime: AgentThreadRuntime,
+  provider: string,
+  modelId: string,
+): Promise<AgentThreadMetaState> {
+  const model = modelRegistry.find(provider, modelId);
+  if (!model) {
+    throw new Error(`Model not found: ${provider}/${modelId}`);
+  }
+  await runtime.session.setModel(model);
+  return getThreadMetaState(runtime);
+}
+
+export function setThreadThinkingLevel(runtime: AgentThreadRuntime, level: string): AgentThreadMetaState {
+  runtime.session.setThinkingLevel(level as AgentThreadMetaState["thinkingLevel"]);
+  return getThreadMetaState(runtime);
 }
 
 function toModelSummary(session: AgentSession): AgentThreadModelSummary | null {

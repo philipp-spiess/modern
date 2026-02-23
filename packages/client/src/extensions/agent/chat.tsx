@@ -1,9 +1,10 @@
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
-import type { AgentThreadDeliveryMode } from "@moderndev/server/src/extensions/agent/types";
+import type { AgentThreadDeliveryMode, AgentThreadMetaState } from "@moderndev/server/src/extensions/agent/types";
 import { useMutation } from "@tanstack/react-query";
-import { CornerDownLeft, ListPlus, Loader2, Compass, Send, Square } from "lucide-react";
+import { ArrowDown, CornerDownLeft, ListPlus, Loader2, Compass, Send, Square } from "lucide-react";
 import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { ModelSelector } from "./components/model-selector";
 import { type ScrollToBottom, useStickToBottom } from "use-stick-to-bottom";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { queryClient } from "../../lib/query-client";
@@ -31,22 +32,42 @@ import { useAgentThread } from "./use-agent-thread";
 function ChatScrollArea({
   children,
   scrollToBottomRef,
+  onIsAtBottomChange,
   threadPath,
   hasThreadState,
+  isStreaming,
 }: {
   children: ReactNode;
   scrollToBottomRef: React.MutableRefObject<ScrollToBottom | null>;
+  onIsAtBottomChange: (value: boolean) => void;
   threadPath?: string;
   hasThreadState: boolean;
+  isStreaming: boolean;
 }) {
-  const { contentRef, isAtBottom, scrollRef, scrollToBottom } = useStickToBottom({
+  const { contentRef, isAtBottom, scrollRef, scrollToBottom, stopScroll } = useStickToBottom({
     initial: "instant",
     resize: "instant",
   });
 
-  // Expose scrollToBottom to parent via ref so it can call it without
-  // subscribing to isAtBottom re-renders.
+  // Expose scrollToBottom and isAtBottom to parent.
   scrollToBottomRef.current = scrollToBottom;
+  useLayoutEffect(() => {
+    onIsAtBottomChange(isAtBottom);
+  }, [isAtBottom, onIsAtBottomChange]);
+
+  // Disengage stick-to-bottom when streaming stops so that user interactions
+  // (e.g. expanding a collapsible) don't cause the view to jump to the bottom.
+  // Re-engage when streaming starts again.
+  const prevStreaming = useRef(isStreaming);
+  useLayoutEffect(() => {
+    if (isStreaming && !prevStreaming.current) {
+      scrollToBottom("smooth");
+    }
+    if (!isStreaming && prevStreaming.current) {
+      stopScroll();
+    }
+    prevStreaming.current = isStreaming;
+  }, [isStreaming, scrollToBottom, stopScroll]);
 
   // Synchronous scroll-to-bottom on initial thread load.
   // `use-stick-to-bottom` relies on ResizeObserver (async, fires after paint),
@@ -62,27 +83,11 @@ function ChatScrollArea({
   }, [threadPath, hasThreadState, scrollRef]);
 
   return (
-    <>
-      <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
-        <div ref={contentRef} className="flex flex-col pb-4">
-          {children}
-        </div>
+    <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
+      <div ref={contentRef} className="flex flex-col pb-4">
+        {children}
       </div>
-
-      {!isAtBottom && (
-        <div className="relative z-10 -mt-10 flex justify-center">
-          <button
-            type="button"
-            onClick={() => {
-              void scrollToBottom("smooth");
-            }}
-            className="rounded-full border border-white/15 bg-neutral-900/90 px-3 py-1 text-xs text-white/60 shadow-lg backdrop-blur-sm transition-colors hover:text-white/80"
-          >
-            Scroll to bottom
-          </button>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
 
@@ -100,6 +105,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   const [draft, setDraft] = useState("");
   const thread = useAgentThread(isDraftThread ? undefined : threadPath);
   const scrollToBottomRef = useRef<ScrollToBottom | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const createThreadFromDraftMutation = useMutation({
     mutationFn: async (text: string) => {
@@ -153,13 +159,20 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
     [send],
   );
 
+  const handleMetaUpdate = useCallback(
+    (meta: AgentThreadMetaState) => {
+      thread.applyMeta(meta);
+    },
+    [thread],
+  );
+
   const steeringQueue = !isDraftThread ? (thread.state?.steeringQueue ?? []) : [];
   const followUpQueue = !isDraftThread ? (thread.state?.followUpQueue ?? []) : [];
   const hasQueued = steeringQueue.length > 0 || followUpQueue.length > 0;
   const error = (createThreadFromDraftMutation.error ?? thread.error ?? null) as Error | null;
 
   return (
-    <div className="flex size-full flex-col">
+    <div className="relative flex size-full flex-col">
       {error && (
         <div className="mx-3 mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
           {error.message}
@@ -168,8 +181,10 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
 
       <ChatScrollArea
         scrollToBottomRef={scrollToBottomRef}
+        onIsAtBottomChange={setIsAtBottom}
         threadPath={threadPath}
         hasThreadState={Boolean(thread.state)}
+        isStreaming={isStreaming}
       >
         {isDraftThread ? (
           <div className="flex flex-1 items-center justify-center py-10 text-center text-sm text-white/40">
@@ -244,15 +259,34 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
         </div>
       )}
 
-      <div className="border-t border-white/8 p-3">
+      <div className="relative p-3 pt-0">
+        {!isAtBottom && (
+          <div className="pointer-events-none absolute inset-x-0 -top-10 z-10 flex justify-center">
+            <button
+              type="button"
+              onClick={() => {
+                void scrollToBottomRef.current?.("smooth");
+              }}
+              className="pointer-events-auto rounded-full border border-white/15 bg-neutral-900/90 p-1.5 text-white/60 shadow-lg backdrop-blur-sm transition-colors hover:text-white/80"
+            >
+              <ArrowDown className="size-3.5" />
+            </button>
+          </div>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void send("auto");
           }}
         >
-          <InputGroup className={cn("border-white/12 bg-white/[0.03]", isStreaming && "border-white/20")}>
+          <InputGroup
+            className={cn(
+              "border-0 inset-ring inset-ring-white/12 bg-white/[0.03]",
+              isStreaming && "inset-ring-white/20",
+            )}
+          >
             <InputGroupTextarea
+              autoFocus
               value={draft}
               onChange={(e) => setDraft(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
@@ -265,8 +299,14 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
               }
               className="field-sizing-content max-h-36 min-h-10"
             />
-            <InputGroupAddon align="block-end" className="justify-between">
+            <InputGroupAddon align="block-end" className="-ml-3 items-end justify-between">
               <div className="flex items-center gap-1">
+                <ModelSelector
+                  threadPath={threadPath}
+                  meta={thread.state ?? null}
+                  onMetaUpdate={handleMetaUpdate}
+                  disabled={isDraftThread}
+                />
                 {isStreaming && (
                   <>
                     <InputGroupButton

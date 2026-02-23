@@ -2,14 +2,24 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { os } from "@orpc/server";
 import * as z from "zod";
 import { listOpenWorkspaces } from "../../state";
-import { createThreadRuntimeForWorkspace, getThreadMetaState, getThreadRuntime, getThreadViewState } from "./runtime";
+import {
+  createThreadRuntimeForWorkspace,
+  getThreadMetaState,
+  getThreadRuntime,
+  getThreadViewState,
+  listAvailableModels,
+  setThreadModel,
+  setThreadThinkingLevel,
+} from "./runtime";
 import { listThreadsForWorkspace, type WorkspaceThreads } from "./threads";
 import type {
   AgentThreadAbortResult,
   AgentThreadDeliveryMode,
   AgentThreadMessageTail,
+  AgentThreadMetaState,
   AgentThreadSendResult,
   AgentThreadWatchUpdate,
+  AvailableModelInfo,
 } from "./types";
 
 const threadInputSchema = z.object({
@@ -175,12 +185,46 @@ export const abortThread = os.input(threadInputSchema).handler(async ({ input })
   } satisfies AgentThreadAbortResult;
 });
 
+export const modelsList = os.handler(async () => {
+  return { models: listAvailableModels() satisfies AvailableModelInfo[] };
+});
+
+export const threadSetModel = os
+  .input(
+    z.object({
+      threadPath: z.string().min(1),
+      provider: z.string().min(1),
+      modelId: z.string().min(1),
+    }),
+  )
+  .handler(async ({ input }) => {
+    const runtime = await getThreadRuntime(input.threadPath);
+    const meta = await setThreadModel(runtime, input.provider, input.modelId);
+    return { meta } satisfies { meta: AgentThreadMetaState };
+  });
+
+export const threadSetThinkingLevel = os
+  .input(
+    z.object({
+      threadPath: z.string().min(1),
+      level: z.string().min(1),
+    }),
+  )
+  .handler(async ({ input }) => {
+    const runtime = await getThreadRuntime(input.threadPath);
+    const meta = setThreadThinkingLevel(runtime, input.level);
+    return { meta } satisfies { meta: AgentThreadMetaState };
+  });
+
 export const agentRouter = {
   threadCreate: createThread,
   threadsList: listWorkspaceThreads,
   threadWatch: watchThread,
   threadSend: sendThreadMessage,
   threadAbort: abortThread,
+  modelsList,
+  threadSetModel,
+  threadSetThinkingLevel,
 };
 
 function dedupeWorkspaces(workspaces?: readonly string[]): string[] {

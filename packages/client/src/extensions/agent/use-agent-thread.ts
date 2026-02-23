@@ -25,6 +25,7 @@ export interface UseAgentThreadResult {
   error: Error | null;
   send: (text: string, delivery?: AgentThreadDeliveryMode) => Promise<AgentThreadSendResult>;
   abort: () => Promise<AgentThreadAbortResult>;
+  applyMeta: (meta: AgentThreadMetaState) => void;
 }
 
 export function useAgentThread(threadPath?: string): UseAgentThreadResult {
@@ -124,6 +125,14 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
     return result;
   }, [abortMutation]);
 
+  const applyMeta = useCallback((meta: AgentThreadMetaState) => {
+    const next = stateRef.current ? applyThreadMetaState(stateRef.current, meta) : null;
+    if (next) {
+      stateRef.current = next;
+      setState(next);
+    }
+  }, []);
+
   const error = (watchError ?? sendMutation.error ?? abortMutation.error ?? null) as Error | null;
 
   return {
@@ -136,6 +145,7 @@ export function useAgentThread(threadPath?: string): UseAgentThreadResult {
     error,
     send,
     abort,
+    applyMeta,
   };
 }
 

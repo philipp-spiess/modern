@@ -17,6 +17,7 @@ export const schema = z
         fontFamily: "JetBrains Mono",
         fontSize: 14,
       }),
+    starredModels: z.array(z.string()).default([]),
   })
   .strip();
 

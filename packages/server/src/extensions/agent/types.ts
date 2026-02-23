@@ -18,6 +18,15 @@ export interface AgentThreadMetaState {
   followUpMode: AgentSession["followUpMode"];
   model: AgentThreadModelSummary | null;
   thinkingLevel: AgentThreadThinkingLevel;
+  supportsThinking: boolean;
+  availableThinkingLevels: string[];
+}
+
+export interface AvailableModelInfo {
+  provider: string;
+  id: string;
+  name: string;
+  reasoning: boolean;
 }
 
 export interface AgentThreadViewState extends AgentThreadMetaState {

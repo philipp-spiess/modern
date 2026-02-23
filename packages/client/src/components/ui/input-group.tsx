@@ -7,13 +7,22 @@ import { cn } from "@/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
-function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
+function InputGroup({ className, onClick, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-group"
       role="group"
+      onClick={(e) => {
+        onClick?.(e);
+        if ((e.target as HTMLElement).closest("button")) {
+          return;
+        }
+        const control =
+          e.currentTarget.querySelector<HTMLElement>("textarea") ?? e.currentTarget.querySelector<HTMLElement>("input");
+        control?.focus();
+      }}
       className={cn(
-        "group/input-group border-input dark:bg-input/30 relative flex w-full items-center rounded-md border shadow-xs transition-[color,box-shadow] outline-none",
+        "group/input-group border-input dark:bg-input/30 relative flex w-full cursor-text items-center rounded-md border shadow-xs transition-[color,box-shadow] outline-none",
         "h-9 min-w-0 has-[>textarea]:h-auto",
 
         // Variants based on alignment.
@@ -68,7 +77,9 @@ function InputGroupAddon({
         if ((e.target as HTMLElement).closest("button")) {
           return;
         }
-        e.currentTarget.parentElement?.querySelector("input")?.focus();
+        const parent = e.currentTarget.parentElement;
+        const control = parent?.querySelector("textarea") ?? parent?.querySelector("input");
+        control?.focus();
       }}
       {...props}
     />
