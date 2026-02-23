@@ -22,6 +22,7 @@ import { Component, type ReactNode, memo } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { AnsiOutput, containsAnsi } from "./components/ansi-output";
 import { useDiffStyle } from "./diff-style-context";
 
 import { Message, MessageContent, MessageResponse } from "./components/message";
@@ -479,6 +480,11 @@ function splitShellOutput(content: string): OutputSegment[] {
 }
 
 function ShellOutputView({ content }: { content: string }) {
+  // ANSI escape codes → render via Ghostty WASM parser
+  if (containsAnsi(content)) {
+    return <AnsiOutput content={content} />;
+  }
+
   const segments = splitShellOutput(content);
   if (segments.every((s) => s.type === "text")) {
     return <InlineCodeBlock content={content} language="txt" />;
