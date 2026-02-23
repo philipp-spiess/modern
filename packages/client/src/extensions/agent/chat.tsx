@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import type { AgentThreadDeliveryMode, AgentThreadMetaState } from "@moderndev/server/src/extensions/agent/types";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowDown, CornerDownLeft, ListPlus, Loader2, Compass, Send, Square } from "lucide-react";
-import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ModelSelector } from "./components/model-selector";
 import { type ScrollToBottom, useStickToBottom } from "use-stick-to-bottom";
 import type { ExtensionPanelProps } from "../../lib/extensions";
@@ -44,7 +44,13 @@ function ChatScrollArea({
   hasThreadState: boolean;
   isStreaming: boolean;
 }) {
-  const { contentRef, isAtBottom, scrollRef, scrollToBottom, stopScroll } = useStickToBottom({
+  const {
+    contentRef,
+    isAtBottom,
+    scrollRef,
+    scrollToBottom,
+    state: stickyState,
+  } = useStickToBottom({
     initial: "instant",
     resize: "instant",
   });
@@ -55,19 +61,52 @@ function ChatScrollArea({
     onIsAtBottomChange(isAtBottom);
   }, [isAtBottom, onIsAtBottomChange]);
 
-  // Only stick-to-bottom while streaming. When not streaming, disengage so
-  // that user interactions (e.g. expanding a collapsible) don't jump the view.
-  // The delay in the else-branch lets the initial scroll-to-bottom layout
-  // effect and the library's internal async handlers (1 ms scroll-event
-  // timeout + ResizeObserver) settle before we disengage.
+  // Re-engage stick-to-bottom when streaming starts.
   useLayoutEffect(() => {
     if (isStreaming) {
       scrollToBottom("smooth");
-    } else if (hasThreadState) {
-      const id = setTimeout(() => stopScroll(), 100);
-      return () => clearTimeout(id);
     }
-  }, [isStreaming, hasThreadState, scrollToBottom, stopScroll]);
+  }, [isStreaming, scrollToBottom]);
+
+  // Disconnect the library's ResizeObserver when the user first interacts
+  // with the scroll area while not streaming.  This keeps auto-scroll active
+  // during initial async rendering (e.g. diffs syntax-highlighting via the
+  // worker pool) but prevents collapsible expand/collapse from jumping to
+  // the bottom.  `pointerdown` fires *before* the Radix collapsible toggles,
+  // so the observer is already gone by the time the content resizes.
+  // Reconnect on cleanup when streaming resumes.
+  const contentElRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    contentElRef.current = contentRef.current;
+    const scrollEl = scrollRef.current;
+
+    if (isStreaming || !hasThreadState || !scrollEl) return;
+
+    let disconnected = false;
+
+    const disconnectObserver = () => {
+      if (disconnected) return;
+      stickyState.resizeObserver?.disconnect();
+      disconnected = true;
+      scrollEl.removeEventListener("pointerdown", disconnectObserver);
+      scrollEl.removeEventListener("wheel", disconnectObserver);
+    };
+
+    scrollEl.addEventListener("pointerdown", disconnectObserver, { passive: true });
+    scrollEl.addEventListener("wheel", disconnectObserver, { passive: true });
+
+    return () => {
+      scrollEl.removeEventListener("pointerdown", disconnectObserver);
+      scrollEl.removeEventListener("wheel", disconnectObserver);
+      // Reconnect when streaming starts or component unmounts.
+      if (disconnected) {
+        const el = contentElRef.current;
+        if (el && stickyState.resizeObserver) {
+          stickyState.resizeObserver.observe(el);
+        }
+      }
+    };
+  }, [isStreaming, hasThreadState, stickyState, contentRef, scrollRef]);
 
   // Synchronous scroll-to-bottom on initial thread load.
   // `use-stick-to-bottom` relies on ResizeObserver (async, fires after paint),
