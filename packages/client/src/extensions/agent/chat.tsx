@@ -2,14 +2,13 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } fro
 import { cn } from "@/lib/utils";
 import type { AgentThreadDeliveryMode, AgentThreadMetaState } from "@moderndev/server/src/extensions/agent/types";
 import { useMutation } from "@tanstack/react-query";
-import { ArrowDown, CornerDownLeft, ListPlus, Loader2, Compass, Send, Square } from "lucide-react";
+import { ArrowDown, Compass, CornerDownLeft, ListPlus, Loader2, Send, Square } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ModelSelector } from "./components/model-selector";
-import { type ScrollToBottom, useStickToBottom } from "use-stick-to-bottom";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { queryClient } from "../../lib/query-client";
 import { client } from "../../lib/rpc";
 import { openWorkspaceWithThread } from "../../lib/workspace";
+import { ModelSelector } from "./components/model-selector";
 import {
   Queue,
   QueueItem,
@@ -19,15 +18,25 @@ import {
   QueueSectionContent,
   QueueSectionTrigger,
 } from "./components/queue";
+import { DiffStyleContext, useDiffStyleStore } from "./diff-style-context";
 import { FollowUpQueueIndicator, MessageList, SteeringQueueIndicator } from "./messages";
 import { useAgentThread } from "./use-agent-thread";
 
 // ---------------------------------------------------------------------------
-// Scroll area – owns useStickToBottom so that isAtBottom state changes only
-// re-render this component, not the parent (and thus not MessageList).
-// children is a stable React element tree from the parent and is skipped
-// during reconciliation when ChatScrollArea re-renders.
+// Scroll area – uses CSS flex-direction: column-reverse so the container
+// naturally starts scrolled to the bottom.  The browser's built-in scroll
+// anchoring (overflow-anchor) keeps the viewport stable when content changes
+// size (async diff highlighting, collapsible expand/collapse) — all in the
+// same layout pass, zero flicker, no JS observers needed.
+//
+// In column-reverse, scrollTop=0 is the visual bottom.  Scrolling up yields
+// negative scrollTop values.
 // ---------------------------------------------------------------------------
+
+type ScrollToBottomFn = (behavior?: string) => void;
+
+/** Threshold in px to consider the user "at the bottom". */
+const BOTTOM_THRESHOLD = 10;
 
 function ChatScrollArea({
   children,
@@ -35,97 +44,49 @@ function ChatScrollArea({
   onIsAtBottomChange,
   threadPath,
   hasThreadState,
-  isStreaming,
 }: {
   children: ReactNode;
-  scrollToBottomRef: React.MutableRefObject<ScrollToBottom | null>;
+  scrollToBottomRef: React.MutableRefObject<ScrollToBottomFn | null>;
   onIsAtBottomChange: (value: boolean) => void;
   threadPath?: string;
   hasThreadState: boolean;
-  isStreaming: boolean;
 }) {
-  const {
-    contentRef,
-    isAtBottom,
-    scrollRef,
-    scrollToBottom,
-    state: stickyState,
-  } = useStickToBottom({
-    initial: "instant",
-    resize: "instant",
-  });
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Expose scrollToBottom and isAtBottom to parent.
+  const scrollToBottom = useCallback((behavior?: string) => {
+    scrollRef.current?.scrollTo({
+      top: 0,
+      behavior: behavior === "smooth" ? "smooth" : "instant",
+    });
+  }, []);
+
   scrollToBottomRef.current = scrollToBottom;
-  useLayoutEffect(() => {
-    onIsAtBottomChange(isAtBottom);
-  }, [isAtBottom, onIsAtBottomChange]);
 
-  // Re-engage stick-to-bottom when streaming starts.
-  useLayoutEffect(() => {
-    if (isStreaming) {
-      scrollToBottom("smooth");
-    }
-  }, [isStreaming, scrollToBottom]);
-
-  // Disconnect the library's ResizeObserver when the user first interacts
-  // with the scroll area while not streaming.  This keeps auto-scroll active
-  // during initial async rendering (e.g. diffs syntax-highlighting via the
-  // worker pool) but prevents collapsible expand/collapse from jumping to
-  // the bottom.  `pointerdown` fires *before* the Radix collapsible toggles,
-  // so the observer is already gone by the time the content resizes.
-  // Reconnect on cleanup when streaming resumes.
-  const contentElRef = useRef<HTMLElement | null>(null);
+  // Track whether the user is at the bottom via scroll events.
   useEffect(() => {
-    contentElRef.current = contentRef.current;
-    const scrollEl = scrollRef.current;
-
-    if (isStreaming || !hasThreadState || !scrollEl) return;
-
-    let disconnected = false;
-
-    const disconnectObserver = () => {
-      if (disconnected) return;
-      stickyState.resizeObserver?.disconnect();
-      disconnected = true;
-      scrollEl.removeEventListener("pointerdown", disconnectObserver);
-      scrollEl.removeEventListener("wheel", disconnectObserver);
+    const el = scrollRef.current;
+    if (!el) return;
+    const handler = () => {
+      onIsAtBottomChange(Math.abs(el.scrollTop) <= BOTTOM_THRESHOLD);
     };
+    el.addEventListener("scroll", handler, { passive: true });
+    handler();
+    return () => el.removeEventListener("scroll", handler);
+  }, [onIsAtBottomChange]);
 
-    scrollEl.addEventListener("pointerdown", disconnectObserver, { passive: true });
-    scrollEl.addEventListener("wheel", disconnectObserver, { passive: true });
-
-    return () => {
-      scrollEl.removeEventListener("pointerdown", disconnectObserver);
-      scrollEl.removeEventListener("wheel", disconnectObserver);
-      // Reconnect when streaming starts or component unmounts.
-      if (disconnected) {
-        const el = contentElRef.current;
-        if (el && stickyState.resizeObserver) {
-          stickyState.resizeObserver.observe(el);
-        }
-      }
-    };
-  }, [isStreaming, hasThreadState, stickyState, contentRef, scrollRef]);
-
-  // Synchronous scroll-to-bottom on initial thread load.
-  // `use-stick-to-bottom` relies on ResizeObserver (async, fires after paint),
-  // so the very first frame renders without being scrolled down. A layout
-  // effect runs before the browser paints and eliminates the flicker.
+  // Reset scroll to bottom when switching threads.
   const scrolledForThread = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (threadPath && hasThreadState && el && scrolledForThread.current !== threadPath) {
-      el.scrollTop = el.scrollHeight;
+      el.scrollTop = 0;
       scrolledForThread.current = threadPath;
     }
-  }, [threadPath, hasThreadState, scrollRef]);
+  }, [threadPath, hasThreadState]);
 
   return (
-    <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
-      <div ref={contentRef} className="flex flex-col pb-4">
-        {children}
-      </div>
+    <div ref={scrollRef} role="log" className="min-h-0 flex-1 flex flex-col-reverse overflow-y-auto px-4">
+      <div className="flex flex-col pb-4">{children}</div>
     </div>
   );
 }
@@ -142,8 +103,9 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   const isDraftThread = state.mode === "draft" || !threadPath;
 
   const [draft, setDraft] = useState("");
+  const diffStyle = useDiffStyleStore();
   const thread = useAgentThread(isDraftThread ? undefined : threadPath);
-  const scrollToBottomRef = useRef<ScrollToBottom | null>(null);
+  const scrollToBottomRef = useRef<ScrollToBottomFn | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const createThreadFromDraftMutation = useMutation({
@@ -211,191 +173,192 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   const error = (createThreadFromDraftMutation.error ?? thread.error ?? null) as Error | null;
 
   return (
-    <div className="relative flex size-full flex-col">
-      {error && (
-        <div className="mx-3 mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-          {error.message}
-        </div>
-      )}
-
-      <ChatScrollArea
-        scrollToBottomRef={scrollToBottomRef}
-        onIsAtBottomChange={setIsAtBottom}
-        threadPath={threadPath}
-        hasThreadState={Boolean(thread.state)}
-        isStreaming={isStreaming}
-      >
-        {isDraftThread ? (
-          <div className="flex flex-1 items-center justify-center py-10 text-center text-sm text-white/40">
-            Send your first message to start this thread.
-          </div>
-        ) : thread.isLoading ? (
-          <div className="flex items-center gap-2 py-8 text-sm text-white/40">
-            <Loader2 className="size-4 animate-spin" />
-            Loading thread…
-          </div>
-        ) : thread.state ? (
-          <>
-            <MessageList
-              messages={thread.state.messages}
-              streamMessage={thread.state.streamMessage}
-              isStreaming={isStreaming}
-            />
-            <SteeringQueueIndicator items={steeringQueue} />
-            <FollowUpQueueIndicator items={followUpQueue} />
-            {isStreaming && !thread.state.streamMessage && (
-              <div className="flex items-center gap-2 py-3 text-xs text-white/30">
-                <span className="size-1.5 animate-pulse rounded-full bg-white/40" />
-                Thinking…
-              </div>
-            )}
-          </>
-        ) : null}
-      </ChatScrollArea>
-
-      {hasQueued && (
-        <div className="px-3 pt-2">
-          <Queue>
-            {steeringQueue.length > 0 && (
-              <QueueSection>
-                <QueueSectionTrigger
-                  count={steeringQueue.length}
-                  label={steeringQueue.length === 1 ? "steering message" : "steering messages"}
-                  icon={<Compass className="size-3 text-amber-300/70" />}
-                />
-                <QueueSectionContent>
-                  <ul className="mt-1">
-                    {steeringQueue.map((text, i) => (
-                      <QueueItem key={i}>
-                        <QueueItemIndicator />
-                        <QueueItemContent>{text}</QueueItemContent>
-                      </QueueItem>
-                    ))}
-                  </ul>
-                </QueueSectionContent>
-              </QueueSection>
-            )}
-            {followUpQueue.length > 0 && (
-              <QueueSection>
-                <QueueSectionTrigger
-                  count={followUpQueue.length}
-                  label={followUpQueue.length === 1 ? "follow-up" : "follow-ups"}
-                  icon={<ListPlus className="size-3 text-emerald-300/70" />}
-                />
-                <QueueSectionContent>
-                  <ul className="mt-1">
-                    {followUpQueue.map((text, i) => (
-                      <QueueItem key={i}>
-                        <QueueItemIndicator />
-                        <QueueItemContent>{text}</QueueItemContent>
-                      </QueueItem>
-                    ))}
-                  </ul>
-                </QueueSectionContent>
-              </QueueSection>
-            )}
-          </Queue>
-        </div>
-      )}
-
-      <div className="relative p-3 pt-0">
-        {!isAtBottom && (
-          <div className="pointer-events-none absolute inset-x-0 -top-10 z-10 flex justify-center">
-            <button
-              type="button"
-              onClick={() => {
-                void scrollToBottomRef.current?.("smooth");
-              }}
-              className="pointer-events-auto rounded-full border border-white/15 bg-neutral-900/90 p-1.5 text-white/60 shadow-lg backdrop-blur-sm transition-colors hover:text-white/80"
-            >
-              <ArrowDown className="size-3.5" />
-            </button>
+    <DiffStyleContext.Provider value={diffStyle}>
+      <div className="relative flex size-full flex-col">
+        {error && (
+          <div className="mx-3 mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+            {error.message}
           </div>
         )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send("auto");
-          }}
-        >
-          <InputGroup
-            className={cn(
-              "border-0 inset-ring inset-ring-white/12 bg-white/[0.03]",
-              isStreaming && "inset-ring-white/20",
-            )}
-          >
-            <InputGroupTextarea
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.currentTarget.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                createThreadFromDraftMutation.isPending
-                  ? "Creating thread…"
-                  : isStreaming
-                    ? "Steer or queue a follow-up…"
-                    : "Send a message…"
-              }
-              className="field-sizing-content max-h-36 min-h-10"
-            />
-            <InputGroupAddon align="block-end" className="-ml-3 items-end justify-between">
-              <div className="flex items-center gap-1">
-                <ModelSelector
-                  threadPath={threadPath}
-                  meta={thread.state ?? null}
-                  onMetaUpdate={handleMetaUpdate}
-                  disabled={isDraftThread}
-                />
-                {isStreaming && (
-                  <>
-                    <InputGroupButton
-                      type="button"
-                      onClick={() => void send("steer")}
-                      disabled={disabled || !draft.trim()}
-                      className="text-amber-300/70 hover:text-amber-300"
-                    >
-                      <Compass className="size-3.5" />
-                      <span>Steer</span>
-                    </InputGroupButton>
-                    <InputGroupButton
-                      type="button"
-                      onClick={() => void send("followUp")}
-                      disabled={disabled || !draft.trim()}
-                      className="text-emerald-300/70 hover:text-emerald-300"
-                    >
-                      <ListPlus className="size-3.5" />
-                      <span>Follow-up</span>
-                    </InputGroupButton>
-                  </>
-                )}
-              </div>
 
-              <div className="flex items-center gap-1">
-                {isStreaming ? (
-                  <>
-                    <InputGroupButton type="submit" disabled={disabled || !draft.trim()}>
-                      <Send className="size-3.5" />
+        <ChatScrollArea
+          scrollToBottomRef={scrollToBottomRef}
+          onIsAtBottomChange={setIsAtBottom}
+          threadPath={threadPath}
+          hasThreadState={Boolean(thread.state)}
+        >
+          {isDraftThread ? (
+            <div className="flex flex-1 items-center justify-center py-10 text-center text-sm text-white/40">
+              Send your first message to start this thread.
+            </div>
+          ) : thread.isLoading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-white/40">
+              <Loader2 className="size-4 animate-spin" />
+              Loading thread…
+            </div>
+          ) : thread.state ? (
+            <>
+              <MessageList
+                messages={thread.state.messages}
+                streamMessage={thread.state.streamMessage}
+                isStreaming={isStreaming}
+              />
+              <SteeringQueueIndicator items={steeringQueue} />
+              <FollowUpQueueIndicator items={followUpQueue} />
+              {isStreaming && !thread.state.streamMessage && (
+                <div className="flex items-center gap-2 py-3 text-xs text-white/30">
+                  <span className="size-1.5 animate-pulse rounded-full bg-white/40" />
+                  Thinking…
+                </div>
+              )}
+            </>
+          ) : null}
+        </ChatScrollArea>
+
+        {hasQueued && (
+          <div className="px-3 pt-2">
+            <Queue>
+              {steeringQueue.length > 0 && (
+                <QueueSection>
+                  <QueueSectionTrigger
+                    count={steeringQueue.length}
+                    label={steeringQueue.length === 1 ? "steering message" : "steering messages"}
+                    icon={<Compass className="size-3 text-amber-300/70" />}
+                  />
+                  <QueueSectionContent>
+                    <ul className="mt-1">
+                      {steeringQueue.map((text, i) => (
+                        <QueueItem key={i}>
+                          <QueueItemIndicator />
+                          <QueueItemContent>{text}</QueueItemContent>
+                        </QueueItem>
+                      ))}
+                    </ul>
+                  </QueueSectionContent>
+                </QueueSection>
+              )}
+              {followUpQueue.length > 0 && (
+                <QueueSection>
+                  <QueueSectionTrigger
+                    count={followUpQueue.length}
+                    label={followUpQueue.length === 1 ? "follow-up" : "follow-ups"}
+                    icon={<ListPlus className="size-3 text-emerald-300/70" />}
+                  />
+                  <QueueSectionContent>
+                    <ul className="mt-1">
+                      {followUpQueue.map((text, i) => (
+                        <QueueItem key={i}>
+                          <QueueItemIndicator />
+                          <QueueItemContent>{text}</QueueItemContent>
+                        </QueueItem>
+                      ))}
+                    </ul>
+                  </QueueSectionContent>
+                </QueueSection>
+              )}
+            </Queue>
+          </div>
+        )}
+
+        <div className="relative p-3 pt-0">
+          {!isAtBottom && (
+            <div className="pointer-events-none absolute inset-x-0 -top-10 z-10 flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  void scrollToBottomRef.current?.("smooth");
+                }}
+                className="pointer-events-auto rounded-full border border-white/15 bg-neutral-900/90 p-1.5 text-white/60 shadow-lg backdrop-blur-sm transition-colors hover:text-white/80"
+              >
+                <ArrowDown className="size-3.5" />
+              </button>
+            </div>
+          )}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send("auto");
+            }}
+          >
+            <InputGroup
+              className={cn(
+                "border-0 inset-ring inset-ring-white/12 bg-white/[0.03]",
+                isStreaming && "inset-ring-white/20",
+              )}
+            >
+              <InputGroupTextarea
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.currentTarget.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  createThreadFromDraftMutation.isPending
+                    ? "Creating thread…"
+                    : isStreaming
+                      ? "Steer or queue a follow-up…"
+                      : "Send a message…"
+                }
+                className="field-sizing-content max-h-36 min-h-10"
+              />
+              <InputGroupAddon align="block-end" className="-ml-3 items-end justify-between">
+                <div className="flex items-center gap-1">
+                  <ModelSelector
+                    threadPath={threadPath}
+                    meta={thread.state ?? null}
+                    onMetaUpdate={handleMetaUpdate}
+                    disabled={isDraftThread}
+                  />
+                  {isStreaming && (
+                    <>
+                      <InputGroupButton
+                        type="button"
+                        onClick={() => void send("steer")}
+                        disabled={disabled || !draft.trim()}
+                        className="text-amber-300/70 hover:text-amber-300"
+                      >
+                        <Compass className="size-3.5" />
+                        <span>Steer</span>
+                      </InputGroupButton>
+                      <InputGroupButton
+                        type="button"
+                        onClick={() => void send("followUp")}
+                        disabled={disabled || !draft.trim()}
+                        className="text-emerald-300/70 hover:text-emerald-300"
+                      >
+                        <ListPlus className="size-3.5" />
+                        <span>Follow-up</span>
+                      </InputGroupButton>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {isStreaming ? (
+                    <>
+                      <InputGroupButton type="submit" disabled={disabled || !draft.trim()}>
+                        <Send className="size-3.5" />
+                      </InputGroupButton>
+                      <InputGroupButton
+                        type="button"
+                        onClick={() => void thread.abort()}
+                        disabled={thread.isAborting}
+                        className="text-rose-300/70 hover:text-rose-300"
+                      >
+                        <Square className="size-3.5" />
+                        <span>Stop</span>
+                      </InputGroupButton>
+                    </>
+                  ) : (
+                    <InputGroupButton type="submit" variant="default" disabled={disabled || !draft.trim()}>
+                      <CornerDownLeft className="size-3.5" />
                     </InputGroupButton>
-                    <InputGroupButton
-                      type="button"
-                      onClick={() => void thread.abort()}
-                      disabled={thread.isAborting}
-                      className="text-rose-300/70 hover:text-rose-300"
-                    >
-                      <Square className="size-3.5" />
-                      <span>Stop</span>
-                    </InputGroupButton>
-                  </>
-                ) : (
-                  <InputGroupButton type="submit" variant="default" disabled={disabled || !draft.trim()}>
-                    <CornerDownLeft className="size-3.5" />
-                  </InputGroupButton>
-                )}
-              </div>
-            </InputGroupAddon>
-          </InputGroup>
-        </form>
+                  )}
+                </div>
+              </InputGroupAddon>
+            </InputGroup>
+          </form>
+        </div>
       </div>
-    </div>
+    </DiffStyleContext.Provider>
   );
 }

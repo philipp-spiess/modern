@@ -1,15 +1,75 @@
 import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@moderndev/server/src/state";
+import { Clipboard, Columns2, Ellipsis, Rows3 } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
+import { toggleDiffStyle, useDiffStyleStore } from "../extensions/agent/diff-style-context";
 import AgentChatPanel from "../extensions/agent/chat";
 import { useHandle } from "../lib/use-handle";
 import { basename } from "../utils/path";
 import { Tabs } from "./tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 type WorkspaceShellProps = {
   active: boolean;
   workspaceCwd: string;
   activeThread: WorkspaceThreadSelection | null;
 };
+
+function ThreadHeader({
+  title,
+  threadPath,
+  workspaceCwd,
+}: {
+  title: string;
+  threadPath: string | null;
+  workspaceCwd: string;
+}) {
+  const diffStyle = useDiffStyleStore();
+
+  return (
+    <div
+      data-tauri-drag-region
+      className="flex h-10 shrink-0 select-none items-center border-b border-white/10 px-3 text-sm text-white/70"
+    >
+      <span data-tauri-drag-region className="min-w-0 flex-1 truncate">
+        {title}
+      </span>
+
+      {threadPath && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="-mr-2 flex size-7 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/5 hover:text-white/70"
+            >
+              <Ellipsis className="size-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="bottom">
+            <DropdownMenuItem onSelect={() => void navigator.clipboard.writeText(workspaceCwd)}>
+              <Clipboard className="size-4" />
+              Copy working directory
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void navigator.clipboard.writeText(threadPath)}>
+              <Clipboard className="size-4" />
+              Copy session ID
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => toggleDiffStyle()}>
+              {diffStyle === "split" ? <Rows3 className="size-4" /> : <Columns2 className="size-4" />}
+              {diffStyle === "split" ? "Stacked diffs" : "Split diffs"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  );
+}
 
 function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellProps) {
   const [hasOpenTabs, setHasOpenTabs] = useState(false);
@@ -65,18 +125,17 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
     <div className="absolute inset-0 flex size-full min-h-0">
       <div className={hasOpenTabs ? "min-w-0 flex-1 p-2 pl-1 pr-1" : "min-w-0 flex-1 p-2 pl-1"}>
         <div className="flex size-full min-h-0 flex-col rounded-lg bg-neutral-900/75 shadow inset-shadow-sm inset-shadow-white/3 outline -outline-offset-1 outline-white/10">
-          <div
-            data-tauri-drag-region
-            className="flex h-10 shrink-0 select-none items-center border-b border-white/10 px-3 text-sm text-white/70"
-          >
-            <span data-tauri-drag-region className="truncate">
-              {isDraftActive
+          <ThreadHeader
+            title={
+              isDraftActive
                 ? resolveDraftThreadTitle(activeThread)
                 : selectedThread
                   ? resolveThreadTitle(selectedThread)
-                  : "No thread selected"}
-            </span>
-          </div>
+                  : "No thread selected"
+            }
+            threadPath={activeThreadPath}
+            workspaceCwd={workspaceCwd}
+          />
 
           <div className="relative min-h-0 flex-1">
             {mountedThreads.map((thread) => {

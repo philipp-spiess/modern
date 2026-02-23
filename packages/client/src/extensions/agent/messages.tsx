@@ -11,6 +11,8 @@ import type { AgentThreadMessages, AgentThreadStreamMessage } from "@moderndev/s
 import { Compass, FilePlus, FileText, ListPlus, Pencil, Terminal as TerminalIcon, User } from "lucide-react";
 import { Component, type ReactNode, memo } from "react";
 
+import { useDiffStyle } from "./diff-style-context";
+
 import { Message, MessageContent, MessageResponse } from "./components/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "./components/reasoning";
 import { Terminal } from "./components/terminal";
@@ -358,6 +360,7 @@ function EditToolView({
   status: "pending" | "success" | "error";
 }) {
   const fileName = path?.split("/").pop() ?? "unknown";
+  const diffStyle = useDiffStyle();
   const diff = result?.details?.diff as string | undefined;
   const patch = diff
     ? convertToPatchFormat(fileName, diff, result?.details?.firstChangedLine ?? 1)
@@ -379,7 +382,7 @@ function EditToolView({
               patch={patch}
               options={{
                 theme: "vitesse-dark",
-                diffStyle: "unified",
+                diffStyle,
                 diffIndicators: "bars",
                 lineDiffType: "word-alt",
                 disableFileHeader: true,
