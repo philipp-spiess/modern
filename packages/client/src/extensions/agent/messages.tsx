@@ -8,9 +8,20 @@ import type {
   UserMessage,
 } from "@mariozechner/pi-ai";
 import type { AgentThreadMessages, AgentThreadStreamMessage } from "@moderndev/server/src/extensions/agent/types";
-import { Compass, FilePlus, FileText, ListPlus, Pencil, Terminal as TerminalIcon, User } from "lucide-react";
+import {
+  Compass,
+  ChevronDownIcon,
+  FilePlus,
+  FileText,
+  ListPlus,
+  Pencil,
+  Terminal as TerminalIcon,
+  User,
+} from "lucide-react";
 import { Component, type ReactNode, memo } from "react";
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 import { useDiffStyle } from "./diff-style-context";
 
 import { Message, MessageContent, MessageResponse } from "./components/message";
@@ -398,7 +409,91 @@ function EditToolView({
 }
 
 // ---------------------------------------------------------------------------
-// Tool: bash (AI Elements Tool + Terminal)
+// Helpers: Syntax-highlighted code block & shell output with diff detection
+// ---------------------------------------------------------------------------
+
+function InlineCodeBlock({ content, language }: { content: string; language: string }) {
+  const filename = language === "bash" || language === "shell" ? "command.sh" : `file.${language}`;
+  return (
+    <DiffErrorBoundary
+      fallback={<pre className="overflow-x-auto p-3 text-xs whitespace-pre-wrap text-white/50">{content}</pre>}
+    >
+      <File
+        file={{ name: filename, contents: content }}
+        options={{
+          theme: "vitesse-dark",
+          overflow: "scroll",
+          disableFileHeader: true,
+          disableLineNumbers: true,
+          unsafeCSS: DIFFS_CSS,
+        }}
+      />
+    </DiffErrorBoundary>
+  );
+}
+
+type OutputSegment = { type: "text" | "diff"; content: string };
+
+function splitShellOutput(content: string): OutputSegment[] {
+  const segments: OutputSegment[] = [];
+  const lines = content.split("\n");
+  let currentSegment: OutputSegment | null = null;
+  let inDiff = false;
+
+  for (const line of lines) {
+    const isDiffStart = line.startsWith("diff --git ");
+    const isDiffLine =
+      inDiff &&
+      (line.startsWith("index ") ||
+        line.startsWith("--- ") ||
+        line.startsWith("+++ ") ||
+        line.startsWith("@@ ") ||
+        line.startsWith("+") ||
+        line.startsWith("-") ||
+        line.startsWith(" ") ||
+        line === "");
+    const isExitingDiff = inDiff && !isDiffStart && !isDiffLine && line.trim() !== "";
+
+    if (isDiffStart) {
+      if (currentSegment?.content) segments.push(currentSegment);
+      currentSegment = { type: "diff", content: line };
+      inDiff = true;
+    } else if (isExitingDiff) {
+      if (currentSegment?.content) segments.push(currentSegment);
+      currentSegment = { type: "text", content: line };
+      inDiff = false;
+    } else if (inDiff) {
+      currentSegment!.content += "\n" + line;
+    } else {
+      if (!currentSegment || currentSegment.type !== "text") {
+        if (currentSegment?.content) segments.push(currentSegment);
+        currentSegment = { type: "text", content: line };
+      } else {
+        currentSegment.content += "\n" + line;
+      }
+    }
+  }
+
+  if (currentSegment?.content) segments.push(currentSegment);
+  return segments;
+}
+
+function ShellOutputView({ content }: { content: string }) {
+  const segments = splitShellOutput(content);
+  if (segments.every((s) => s.type === "text")) {
+    return <InlineCodeBlock content={content} language="txt" />;
+  }
+  return (
+    <>
+      {segments.map((segment, i) => (
+        <InlineCodeBlock key={i} content={segment.content} language={segment.type === "diff" ? "diff" : "txt"} />
+      ))}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tool: bash (custom collapsible with syntax-highlighted command & output)
 // ---------------------------------------------------------------------------
 
 function BashToolView({
@@ -414,18 +509,38 @@ function BashToolView({
   const hasOutput = Boolean(output && output !== "(no output)");
 
   return (
-    <Tool defaultOpen={false}>
-      <ToolHeader
-        icon={<TerminalIcon className="size-3.5 text-white/50" />}
-        title={command ? truncate(command, 80) : "bash"}
-        status={status}
-      />
-      {hasOutput && (
-        <ToolContent>
-          <Terminal output={output!} />
-        </ToolContent>
-      )}
-    </Tool>
+    <Collapsible
+      defaultOpen={false}
+      className="group not-prose w-full overflow-hidden rounded-lg border border-white/8 transition-colors hover:border-white/15"
+    >
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]">
+        <TerminalIcon
+          className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
+        />
+        <span className="shrink-0 text-xs font-medium text-white/70">Shell</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{command ?? ""}</span>
+        {status === "error" && (
+          <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
+            Error
+          </span>
+        )}
+        <ChevronDownIcon className="size-3.5 shrink-0 text-white/20 transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="flex flex-col">
+          {command && (
+            <div className="border-t border-white/5">
+              <InlineCodeBlock content={command} language="bash" />
+            </div>
+          )}
+          {hasOutput && (
+            <div className="max-h-64 overflow-auto border-t border-white/5">
+              <ShellOutputView content={output!} />
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -506,22 +621,43 @@ function GenericToolView({
 
 function BashExecutionView({ message }: { message: BashExecutionMessage }) {
   const hasOutput = message.output.trim().length > 0;
-  const status = message.exitCode === 0 || message.exitCode === undefined ? "success" : "error";
+  const isError = message.exitCode !== 0 && message.exitCode !== undefined;
+  const fullOutput = message.output + (message.truncated ? "\n… (output truncated)" : "");
 
   return (
-    <Tool defaultOpen={false}>
-      <ToolHeader
-        icon={<TerminalIcon className="size-3.5 text-white/50" />}
-        title={truncate(message.command, 80)}
-        status={status}
-        statusText={message.cancelled ? "Cancelled" : message.exitCode ? `Exit ${message.exitCode}` : undefined}
-      />
-      {hasOutput && (
-        <ToolContent>
-          <Terminal output={message.output + (message.truncated ? "\n… (output truncated)" : "")} />
-        </ToolContent>
-      )}
-    </Tool>
+    <Collapsible
+      defaultOpen={false}
+      className="group not-prose w-full overflow-hidden rounded-lg border border-white/8 transition-colors hover:border-white/15"
+    >
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]">
+        <TerminalIcon className="size-3.5 shrink-0 text-white/50" />
+        <span className="shrink-0 text-xs font-medium text-white/70">Shell</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{message.command}</span>
+        {message.cancelled && (
+          <span className="shrink-0 rounded bg-yellow-500/15 px-1.5 py-0.5 text-[11px] font-medium text-yellow-400">
+            Cancelled
+          </span>
+        )}
+        {isError && !message.cancelled && (
+          <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
+            Exit {message.exitCode}
+          </span>
+        )}
+        <ChevronDownIcon className="size-3.5 shrink-0 text-white/20 transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="flex flex-col">
+          <div className="border-t border-white/5">
+            <InlineCodeBlock content={message.command} language="bash" />
+          </div>
+          {hasOutput && (
+            <div className="max-h-64 overflow-auto border-t border-white/5">
+              <ShellOutputView content={fullOutput} />
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

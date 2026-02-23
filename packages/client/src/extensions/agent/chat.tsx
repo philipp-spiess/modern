@@ -23,19 +23,24 @@ import { FollowUpQueueIndicator, MessageList, SteeringQueueIndicator } from "./m
 import { useAgentThread } from "./use-agent-thread";
 
 // ---------------------------------------------------------------------------
-// Scroll area – uses CSS flex-direction: column-reverse so the container
-// naturally starts scrolled to the bottom.  The browser's built-in scroll
-// anchoring (overflow-anchor) keeps the viewport stable when content changes
-// size (async diff highlighting, collapsible expand/collapse) — all in the
-// same layout pass, zero flicker, no JS observers needed.
+// Scroll area – manual scroll-anchoring that works in all browsers (Safari
+// does not support CSS overflow-anchor).
 //
-// In column-reverse, scrollTop=0 is the visual bottom.  Scrolling up yields
-// negative scrollTop values.
+// Two modes controlled by a `hasInteracted` flag:
+//
+//   1. Auto-scroll (initial load + streaming) – keep the view pinned to the
+//      bottom so async content (diff highlighting, streaming tokens) is
+//      visible as it arrives.
+//
+//   2. Anchored (after the user clicks or scrolls) – save the DOM node at
+//      the top of the viewport and its pixel offset.  When a ResizeObserver
+//      fires (before paint) we restore that offset, so collapsible
+//      expand/collapse never jumps the view.
 // ---------------------------------------------------------------------------
 
 type ScrollToBottomFn = (behavior?: string) => void;
 
-/** Threshold in px to consider the user "at the bottom". */
+/** Distance from the bottom (px) within which we consider the user "at the bottom". */
 const BOTTOM_THRESHOLD = 10;
 
 function ChatScrollArea({
@@ -44,49 +49,131 @@ function ChatScrollArea({
   onIsAtBottomChange,
   threadPath,
   hasThreadState,
+  isStreaming,
 }: {
   children: ReactNode;
   scrollToBottomRef: React.MutableRefObject<ScrollToBottomFn | null>;
   onIsAtBottomChange: (value: boolean) => void;
   threadPath?: string;
   hasThreadState: boolean;
+  isStreaming: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
+  // -- anchor bookkeeping ---------------------------------------------------
+  const anchorRef = useRef<{ node: Element; offset: number } | null>(null);
+  const hasInteracted = useRef(false);
+  const isStreamingRef = useRef(isStreaming);
+  isStreamingRef.current = isStreaming;
+
+  /** Snapshot the first content-child whose bottom is inside the viewport. */
+  const saveAnchor = useCallback(() => {
+    const scroll = scrollRef.current;
+    const content = contentRef.current;
+    if (!scroll || !content) return;
+    const top = scroll.getBoundingClientRect().top;
+    for (const child of content.children) {
+      const r = child.getBoundingClientRect();
+      if (r.bottom > top) {
+        anchorRef.current = { node: child, offset: r.top - top };
+        return;
+      }
+    }
+  }, []);
+
+  /** Adjust scrollTop so the anchored node sits at its saved offset. */
+  const restoreAnchor = useCallback(() => {
+    const scroll = scrollRef.current;
+    const anchor = anchorRef.current;
+    if (!scroll || !anchor || !anchor.node.isConnected) return;
+    const top = scroll.getBoundingClientRect().top;
+    const delta = anchor.node.getBoundingClientRect().top - top - anchor.offset;
+    if (Math.abs(delta) > 0.5) scroll.scrollTop += delta;
+  }, []);
+
+  // -- public scroll-to-bottom ----------------------------------------------
   const scrollToBottom = useCallback((behavior?: string) => {
-    scrollRef.current?.scrollTo({
-      top: 0,
+    const el = scrollRef.current;
+    if (!el) return;
+    hasInteracted.current = false; // re-engage auto-scroll
+    el.scrollTo({
+      top: el.scrollHeight - el.clientHeight,
       behavior: behavior === "smooth" ? "smooth" : "instant",
     });
   }, []);
 
   scrollToBottomRef.current = scrollToBottom;
 
-  // Track whether the user is at the bottom via scroll events.
+  // -- scroll listener: keep anchor fresh + report isAtBottom ---------------
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const handler = () => {
-      onIsAtBottomChange(Math.abs(el.scrollTop) <= BOTTOM_THRESHOLD);
+      saveAnchor();
+      onIsAtBottomChange(el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_THRESHOLD);
     };
     el.addEventListener("scroll", handler, { passive: true });
     handler();
     return () => el.removeEventListener("scroll", handler);
-  }, [onIsAtBottomChange]);
+  }, [onIsAtBottomChange, saveAnchor]);
 
-  // Reset scroll to bottom when switching threads.
+  // -- detect first user interaction (switches to anchor mode) --------------
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handler = () => {
+      hasInteracted.current = true;
+      saveAnchor();
+    };
+    el.addEventListener("pointerdown", handler, { passive: true });
+    el.addEventListener("wheel", handler, { passive: true });
+    return () => {
+      el.removeEventListener("pointerdown", handler);
+      el.removeEventListener("wheel", handler);
+    };
+  }, [saveAnchor]);
+
+  // -- ResizeObserver: auto-scroll OR restore anchor (fires before paint) ---
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    const content = contentRef.current;
+    if (!scroll || !content) return;
+    const observer = new ResizeObserver(() => {
+      if (isStreamingRef.current || !hasInteracted.current) {
+        // Auto-scroll mode: keep pinned to the bottom.
+        const dist = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+        if (dist > 0.5) scroll.scrollTop = scroll.scrollHeight - scroll.clientHeight;
+      } else {
+        restoreAnchor();
+      }
+      saveAnchor();
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [restoreAnchor, saveAnchor]);
+
+  // -- reset on thread switch -----------------------------------------------
+  useEffect(() => {
+    hasInteracted.current = false;
+    anchorRef.current = null;
+  }, [threadPath]);
+
+  // -- initial scroll-to-bottom (layout effect → before first paint) --------
   const scrolledForThread = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (threadPath && hasThreadState && el && scrolledForThread.current !== threadPath) {
-      el.scrollTop = 0;
+      el.scrollTop = el.scrollHeight;
       scrolledForThread.current = threadPath;
     }
   }, [threadPath, hasThreadState]);
 
   return (
-    <div ref={scrollRef} role="log" className="min-h-0 flex-1 flex flex-col-reverse overflow-y-auto px-4">
-      <div className="flex flex-col pb-4">{children}</div>
+    <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
+      <div ref={contentRef} className="flex flex-col pb-4">
+        {children}
+      </div>
     </div>
   );
 }
@@ -186,6 +273,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
           onIsAtBottomChange={setIsAtBottom}
           threadPath={threadPath}
           hasThreadState={Boolean(thread.state)}
+          isStreaming={isStreaming}
         >
           {isDraftThread ? (
             <div className="flex flex-1 items-center justify-center py-10 text-center text-sm text-white/40">
