@@ -25,14 +25,12 @@ fs.renameSync(
 // PI_PACKAGE_DIR will point here; the library expects a "package.json" in that dir.
 const piDir = path.join(__dirname, "../../../src-tauri/pi-agent");
 fs.mkdirSync(piDir, { recursive: true });
-fs.copyFileSync(
-  path.join(__dirname, "../../..", "node_modules/@mariozechner/pi-coding-agent/package.json"),
-  path.join(piDir, "package.json"),
-);
+fs.copyFileSync(require.resolve("@mariozechner/pi-coding-agent/package.json"), path.join(piDir, "package.json"));
 
 // Copy the ripgrep binary so the compiled server can use it for file indexing.
 // The server reads RG_PATH env var to locate it.
-const rgSrc = path.join(__dirname, "../../..", "node_modules/@vscode/ripgrep/bin/rg" + ext);
+const rgPkgDir = path.dirname(require.resolve("@vscode/ripgrep/package.json"));
+const rgSrc = path.join(rgPkgDir, "bin/rg" + ext);
 const rgDest = path.join(__dirname, "../../../src-tauri/binaries/rg" + ext);
 fs.copyFileSync(rgSrc, rgDest);
 fs.chmodSync(rgDest, 0o755);
