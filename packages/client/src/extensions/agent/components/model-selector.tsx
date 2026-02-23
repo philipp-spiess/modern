@@ -1,18 +1,11 @@
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useSettings } from "@/lib/settings";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { AgentThreadMetaState, AvailableModelInfo } from "@moderndev/server/src/extensions/agent/types";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Brain, Check, ChevronDown, Star } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { queryClient } from "../../../lib/query-client";
 import { client } from "../../../lib/rpc";
 
 // ---------------------------------------------------------------------------
@@ -122,8 +115,13 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
   const [open, setOpen] = useState(false);
   const [thinkingPending, setThinkingPending] = useState(false);
 
-  const starredModels = useSettings((s) => s.starredModels);
-  const starredSet = useMemo(() => new Set(starredModels), [starredModels]);
+  const enabledQuery = useQuery({
+    queryKey: ["agent", "enabledModelsList"],
+    queryFn: () => client.agent.enabledModelsList(),
+    staleTime: 30_000,
+  });
+  const enabledPatterns = useMemo(() => enabledQuery.data?.patterns ?? [], [enabledQuery.data]);
+  const enabledSet = useMemo(() => new Set(enabledPatterns), [enabledPatterns]);
 
   const modelsQuery = useQuery({
     queryKey: ["agent", "modelsList"],
@@ -138,7 +136,7 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
   const supportsThinking = meta?.supportsThinking ?? false;
 
   // The server already includes "off" in availableThinkingLevels when the model
-  // supports thinking. Keep only 3 levels: "off" + the 2 highest non-off levels.
+  // supports thinking. Keep only "off" + the 3 highest non-off levels.
   const availableLevels = useMemo(() => {
     const levels = meta?.availableThinkingLevels ?? ["off"];
     const nonOff = levels.filter((l) => l !== "off");
@@ -163,19 +161,16 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
     [threadPath, onMetaUpdate],
   );
 
-  const toggleStar = useCallback(
-    async (model: AvailableModelInfo, e: React.MouseEvent) => {
-      e.stopPropagation();
+  const toggleStarMutation = useMutation({
+    mutationFn: async (model: AvailableModelInfo) => {
       const key = modelKey(model);
-      const next = starredSet.has(key) ? starredModels.filter((k) => k !== key) : [...starredModels, key];
-      try {
-        await client.settings.set({ path: ["starredModels"], value: next });
-      } catch (err) {
-        console.error("Failed to update starred models:", err);
-      }
+      const next = enabledSet.has(key) ? enabledPatterns.filter((k) => k !== key) : [...enabledPatterns, key];
+      await client.agent.enabledModelsSet({ patterns: next });
     },
-    [starredModels, starredSet],
-  );
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["agent", "enabledModelsList"] });
+    },
+  });
 
   const cycleThinking = useCallback(async () => {
     if (!threadPath || !supportsThinking || thinkingPending) return;
@@ -204,9 +199,9 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
 
   return (
     <div className="flex items-end text-xs text-white/50">
-      {/* Model dropdown */}
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild disabled={disabled}>
+      {/* Model combobox */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild disabled={disabled}>
           <button
             type="button"
             className="flex items-center gap-1 rounded px-1.5 py-1 transition-colors hover:bg-white/[0.06] hover:text-white/70 disabled:pointer-events-none disabled:opacity-50"
@@ -214,73 +209,112 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
             <span className="truncate">{currentModel?.name ?? "Select model"}</span>
             <ChevronDown className="size-3 shrink-0 opacity-50" />
           </button>
-        </DropdownMenuTrigger>
+        </PopoverTrigger>
 
-        <DropdownMenuContent side="top" align="start" className="max-h-80 w-64 overflow-y-auto">
-          {groups.map((group, gi) => (
-            <DropdownMenuGroup key={group.provider}>
-              {gi > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel className="text-xs text-white/40">
-                {getProviderLabel(group.provider)}
-              </DropdownMenuLabel>
-              {group.models.map((model) => {
-                const key = modelKey(model);
-                const isSelected = currentModel?.provider === model.provider && currentModel?.id === model.id;
-                const isStarred = starredSet.has(key);
-                return (
-                  <DropdownMenuItem
-                    key={key}
-                    onClick={() => void handleSelectModel(model)}
-                    className="flex items-center gap-2"
-                  >
-                    <span className="min-w-0 flex-1 truncate">{model.name}</span>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={(e) => void toggleStar(model, e)}
-                        className={cn(
-                          "rounded p-0.5 transition-colors hover:text-amber-300",
-                          isStarred ? "text-amber-400" : "text-white/20 hover:text-amber-300/60",
-                        )}
+        <PopoverContent side="top" align="start" className="w-64 p-0">
+          <Command>
+            <CommandInput placeholder="Search models…" className="text-xs" />
+            <CommandList>
+              <CommandEmpty>No models found.</CommandEmpty>
+
+              {enabledPatterns.length > 0 && (
+                <CommandGroup heading="Enabled">
+                  {groups.flatMap((g) =>
+                    g.models
+                      .filter((m) => enabledSet.has(modelKey(m)))
+                      .map((model) => {
+                        const key = modelKey(model);
+                        const isSelected = currentModel?.provider === model.provider && currentModel?.id === model.id;
+                        return (
+                          <CommandItem
+                            key={`enabled-${key}`}
+                            value={`enabled-${model.name}-${key}`}
+                            onSelect={() => void handleSelectModel(model)}
+                            className="flex items-center gap-2"
+                          >
+                            <span className="min-w-0 flex-1 truncate">{model.name}</span>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onPointerDown={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  void toggleStarMutation.mutate(model);
+                                }}
+                                className="rounded p-0.5 text-amber-400 transition-colors hover:text-amber-300"
+                              >
+                                <Star className="size-3 fill-current" />
+                              </button>
+                              {isSelected && <Check className="size-3.5 text-white/60" />}
+                            </div>
+                          </CommandItem>
+                        );
+                      }),
+                  )}
+                </CommandGroup>
+              )}
+
+              {groups.map((group) => (
+                <CommandGroup key={group.provider} heading={getProviderLabel(group.provider)}>
+                  {group.models.map((model) => {
+                    const key = modelKey(model);
+                    const isSelected = currentModel?.provider === model.provider && currentModel?.id === model.id;
+                    const isEnabled = enabledSet.has(key);
+                    return (
+                      <CommandItem
+                        key={key}
+                        value={`${model.name}-${key}`}
+                        onSelect={() => void handleSelectModel(model)}
+                        className="flex items-center gap-2"
                       >
-                        <Star className={cn("size-3", isStarred && "fill-current")} />
-                      </button>
-                      {isSelected && <Check className="size-3.5 text-white/60" />}
-                    </div>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuGroup>
-          ))}
-
-          {groups.length === 0 && (
-            <div className="px-2 py-3 text-center text-xs text-white/30">No models available</div>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+                        <span className="min-w-0 flex-1 truncate">{model.name}</span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              void toggleStarMutation.mutate(model);
+                            }}
+                            className={cn(
+                              "rounded p-0.5 transition-colors hover:text-amber-300",
+                              isEnabled ? "text-amber-400" : "text-white/20 hover:text-amber-300/60",
+                            )}
+                          >
+                            <Star className={cn("size-3", isEnabled && "fill-current")} />
+                          </button>
+                          {isSelected && <Check className="size-3.5 text-white/60" />}
+                        </div>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              ))}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
 
       {/* Thinking level toggle */}
       {supportsThinking && (
-        <>
-          <button
-            type="button"
-            onClick={() => void cycleThinking()}
-            disabled={disabled || thinkingPending}
-            className={cn(
-              "flex items-center gap-1.5 self-stretch rounded px-1.5 transition-colors hover:bg-white/[0.06] hover:text-white/70 disabled:pointer-events-none disabled:opacity-50",
-              currentThinking !== "off" && "text-white/60",
-            )}
-            title={`Thinking: ${THINKING_LEVEL_LABELS[currentThinking] ?? currentThinking}`}
-          >
-            <Brain className="size-3 shrink-0" />
-            {currentThinking !== "off" && (
-              <>
-                <ThinkingDots level={currentThinking} levels={availableLevels} />
-                <span>{THINKING_LEVEL_LABELS[currentThinking] ?? currentThinking}</span>
-              </>
-            )}
-          </button>
-        </>
+        <button
+          type="button"
+          onClick={() => void cycleThinking()}
+          disabled={disabled || thinkingPending}
+          className={cn(
+            "flex items-center gap-1.5 self-stretch rounded px-1.5 transition-colors hover:bg-white/[0.06] hover:text-white/70 disabled:pointer-events-none disabled:opacity-50",
+            currentThinking !== "off" && "text-white/60",
+          )}
+          title={`Thinking: ${THINKING_LEVEL_LABELS[currentThinking] ?? currentThinking}`}
+        >
+          <Brain className="size-3 shrink-0" />
+          {currentThinking !== "off" && (
+            <>
+              <ThinkingDots level={currentThinking} levels={availableLevels} />
+              <span>{THINKING_LEVEL_LABELS[currentThinking] ?? currentThinking}</span>
+            </>
+          )}
+        </button>
       )}
     </div>
   );

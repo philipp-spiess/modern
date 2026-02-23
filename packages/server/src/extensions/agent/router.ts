@@ -7,7 +7,9 @@ import {
   getThreadMetaState,
   getThreadRuntime,
   getThreadViewState,
+  getEnabledModels,
   listAvailableModels,
+  setEnabledModels,
   setThreadModel,
   setThreadThinkingLevel,
 } from "./runtime";
@@ -216,6 +218,15 @@ export const threadSetThinkingLevel = os
     return { meta } satisfies { meta: AgentThreadMetaState };
   });
 
+export const enabledModelsList = os.handler(async () => {
+  return { patterns: getEnabledModels() };
+});
+
+export const enabledModelsSet = os.input(z.object({ patterns: z.array(z.string()) })).handler(async ({ input }) => {
+  setEnabledModels(input.patterns);
+  return { patterns: getEnabledModels() };
+});
+
 export const agentRouter = {
   threadCreate: createThread,
   threadsList: listWorkspaceThreads,
@@ -223,6 +234,8 @@ export const agentRouter = {
   threadSend: sendThreadMessage,
   threadAbort: abortThread,
   modelsList,
+  enabledModelsList,
+  enabledModelsSet,
   threadSetModel,
   threadSetThinkingLevel,
 };

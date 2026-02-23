@@ -5,6 +5,7 @@ import {
   createAgentSession,
   ModelRegistry,
   SessionManager,
+  SettingsManager,
   type AgentSession,
 } from "@mariozechner/pi-coding-agent";
 import type { AgentThreadMetaState, AgentThreadModelSummary, AgentThreadViewState, AvailableModelInfo } from "./types";
@@ -16,6 +17,7 @@ export interface AgentThreadRuntime {
 
 const authStorage = AuthStorage.create();
 const modelRegistry = new ModelRegistry(authStorage);
+const settingsManager = SettingsManager.create();
 const runtimeByThreadPath = new Map<string, Promise<AgentThreadRuntime>>();
 
 export async function getThreadRuntime(threadPath: string): Promise<AgentThreadRuntime> {
@@ -125,6 +127,14 @@ export function listAvailableModels(): AvailableModelInfo[] {
     name: m.name ?? m.id,
     reasoning: m.reasoning,
   }));
+}
+
+export function getEnabledModels(): string[] {
+  return settingsManager.getEnabledModels() ?? [];
+}
+
+export function setEnabledModels(patterns: string[]): void {
+  settingsManager.setEnabledModels(patterns.length > 0 ? patterns : undefined);
 }
 
 export async function setThreadModel(
