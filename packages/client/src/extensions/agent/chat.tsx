@@ -55,19 +55,19 @@ function ChatScrollArea({
     onIsAtBottomChange(isAtBottom);
   }, [isAtBottom, onIsAtBottomChange]);
 
-  // Disengage stick-to-bottom when streaming stops so that user interactions
-  // (e.g. expanding a collapsible) don't cause the view to jump to the bottom.
-  // Re-engage when streaming starts again.
-  const prevStreaming = useRef(isStreaming);
+  // Only stick-to-bottom while streaming. When not streaming, disengage so
+  // that user interactions (e.g. expanding a collapsible) don't jump the view.
+  // The delay in the else-branch lets the initial scroll-to-bottom layout
+  // effect and the library's internal async handlers (1 ms scroll-event
+  // timeout + ResizeObserver) settle before we disengage.
   useLayoutEffect(() => {
-    if (isStreaming && !prevStreaming.current) {
+    if (isStreaming) {
       scrollToBottom("smooth");
+    } else if (hasThreadState) {
+      const id = setTimeout(() => stopScroll(), 100);
+      return () => clearTimeout(id);
     }
-    if (!isStreaming && prevStreaming.current) {
-      stopScroll();
-    }
-    prevStreaming.current = isStreaming;
-  }, [isStreaming, scrollToBottom, stopScroll]);
+  }, [isStreaming, hasThreadState, scrollToBottom, stopScroll]);
 
   // Synchronous scroll-to-bottom on initial thread load.
   // `use-stick-to-bottom` relies on ResizeObserver (async, fires after paint),

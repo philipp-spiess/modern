@@ -29,11 +29,11 @@ function ThinkingDots({ level, levels }: { level: string; levels: string[] }) {
   const total = nonOff.length;
 
   return (
-    <span className="inline-flex flex-col items-center gap-px">
+    <span className="inline-flex flex-col items-center justify-center gap-px self-center">
       {Array.from({ length: total }, (_, i) => (
         <span
           key={i}
-          className={cn("size-1 rounded-full", i >= total - count ? "bg-current" : "bg-current opacity-20")}
+          className={cn("size-0.75 rounded-full", i >= total - count ? "bg-current" : "bg-current opacity-20")}
         />
       ))}
     </span>
@@ -303,7 +303,7 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
           disabled={disabled || thinkingPending}
           className={cn(
             "flex items-center gap-1.5 self-stretch rounded px-1.5 transition-colors hover:bg-white/[0.06] hover:text-white/70 disabled:pointer-events-none disabled:opacity-50",
-            currentThinking !== "off" && "text-white/60",
+            currentThinking !== "off" && "text-white/50",
           )}
           title={`Thinking: ${THINKING_LEVEL_LABELS[currentThinking] ?? currentThinking}`}
         >
