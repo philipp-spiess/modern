@@ -15,6 +15,7 @@ import {
   FolderOpenIcon,
   FolderPlusIcon,
   GitBranch,
+  PanelLeftOpen,
   SquarePen,
   Trash2,
   type LucideIcon,
@@ -24,6 +25,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { client, orpc } from "../lib/rpc";
+import { toggleSidebar } from "../lib/sidebar-store";
 import {
   activateWorkspace,
   openWorkspace,
@@ -150,7 +152,16 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
 
   return (
     <div className="flex max-h-screen h-full flex-col p-2 pr-1">
-      <div data-tauri-drag-region className="h-[30px] shrink-0" />
+      <div data-tauri-drag-region className="h-[30px] shrink-0 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => toggleSidebar()}
+          className="flex size-6 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
+          aria-label="Collapse sidebar"
+        >
+          <PanelLeftOpen className="size-3.5" />
+        </button>
+      </div>
       <div className="flex min-h-0 flex-1 min-w-0 select-none flex-col overflow-y-auto p-2 gap-4">
         <div className="p-1 w-full">
           <button

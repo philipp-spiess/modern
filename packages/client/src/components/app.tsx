@@ -7,6 +7,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
+import { toggleSidebar, useSidebarVisible } from "../lib/sidebar-store";
 import { useHandle } from "../lib/use-handle";
 import { openWorkspace } from "../lib/workspace";
 import CommandPalette from "./command-palette";
@@ -46,6 +47,7 @@ void setupMenu();
 function App() {
   const [sidebarWidth, handleProps] = useHandle("horizontal", "sidebar-width", 320);
   const [isSplashVisible, setIsSplashVisible] = useState(false);
+  const sidebarVisible = useSidebarVisible();
   const layoutStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
   } as CSSProperties;
@@ -69,6 +71,10 @@ function App() {
     }
     if (command === "view.splash.open") {
       showSplash();
+      return;
+    }
+    if (command === "view.toggleSidebar") {
+      toggleSidebar();
       return;
     }
     if (command === "view.toggleDevTools") {
@@ -133,25 +139,33 @@ function App() {
     <div className="flex h-dvh w-full flex-col">
       <main
         style={layoutStyle}
-        className="grid flex-1 grid-cols-[minmax(120px,var(--sidebar-width))_auto_1fr] overflow-hidden"
+        className={
+          sidebarVisible
+            ? "grid flex-1 grid-cols-[minmax(120px,var(--sidebar-width))_auto_1fr] overflow-hidden"
+            : "flex flex-1 overflow-hidden"
+        }
       >
-        <Sidebar
-          activeCwd={cwd}
-          activeThread={activeThread}
-          workspaces={workspaces}
-          expandedByWorkspace={expandedByWorkspace}
-        />
+        {sidebarVisible && (
+          <>
+            <Sidebar
+              activeCwd={cwd}
+              activeThread={activeThread}
+              workspaces={workspaces}
+              expandedByWorkspace={expandedByWorkspace}
+            />
 
-        <div className="group relative h-full w-px select-none cursor-col-resize">
-          <div className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-px -translate-x-1/2 rounded bg-gradient-to-b from-transparent via-white/0 to-transparent transition-all duration-150 ease-in-out group-hover:w-[3px] group-hover:via-white/20 group-active:via-white/20" />
-          <div
-            {...handleProps}
-            role="separator"
-            aria-label="Resize sidebar"
-            aria-orientation="vertical"
-            className="absolute -inset-x-2 inset-y-0 cursor-col-resize touch-none"
-          />
-        </div>
+            <div className="group relative h-full w-px select-none cursor-col-resize">
+              <div className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-px -translate-x-1/2 rounded bg-gradient-to-b from-transparent via-white/0 to-transparent transition-all duration-150 ease-in-out group-hover:w-[3px] group-hover:via-white/20 group-active:via-white/20" />
+              <div
+                {...handleProps}
+                role="separator"
+                aria-label="Resize sidebar"
+                aria-orientation="vertical"
+                className="absolute -inset-x-2 inset-y-0 cursor-col-resize touch-none"
+              />
+            </div>
+          </>
+        )}
 
         <div className="relative size-full overflow-hidden">
           {mountedWorkspaces.map((workspaceCwd) => {

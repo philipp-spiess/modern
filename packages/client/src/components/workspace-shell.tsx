@@ -1,8 +1,9 @@
 import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@moderndev/server/src/state";
-import { Clipboard, Columns2, Ellipsis, Rows3 } from "lucide-react";
+import { Clipboard, Columns2, Ellipsis, PanelLeftClose, Rows3 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { toggleDiffStyle, useDiffStyleStore } from "../extensions/agent/diff-style-context";
 import AgentChatPanel from "../extensions/agent/chat";
+import { toggleSidebar, useSidebarVisible } from "../lib/sidebar-store";
 import { useHandle } from "../lib/use-handle";
 import { basename } from "../utils/path";
 import { Tabs } from "./tabs";
@@ -24,18 +25,34 @@ function ThreadHeader({
   title,
   threadPath,
   workspaceCwd,
+  sidebarVisible,
 }: {
   title: string;
   threadPath: string | null;
   workspaceCwd: string;
+  sidebarVisible: boolean;
 }) {
   const diffStyle = useDiffStyleStore();
 
   return (
     <div
       data-tauri-drag-region
-      className="flex h-10 shrink-0 select-none items-center border-b border-white/10 px-3 text-sm text-white/70"
+      className={
+        sidebarVisible
+          ? "flex h-10 shrink-0 select-none items-center border-b border-white/10 px-3 text-sm text-white/70"
+          : "flex h-10 shrink-0 select-none items-center border-b border-white/10 pl-21 pr-3 text-sm text-white/70"
+      }
     >
+      {!sidebarVisible && (
+        <button
+          type="button"
+          onClick={() => toggleSidebar()}
+          className="mr-2 flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
+          aria-label="Expand sidebar"
+        >
+          <PanelLeftClose className="size-3.5" />
+        </button>
+      )}
       <span data-tauri-drag-region className="min-w-0 flex-1 truncate">
         {title}
       </span>
@@ -72,6 +89,7 @@ function ThreadHeader({
 }
 
 function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellProps) {
+  const sidebarVisible = useSidebarVisible();
   const [hasOpenTabs, setHasOpenTabs] = useState(false);
   const shellContainerRef = useRef<HTMLDivElement | null>(null);
   const [tabsPercent, tabsHandleProps] = useHandle("horizontal", `workspace-tabs-width:${workspaceCwd}`, 50, {
@@ -127,7 +145,17 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
 
   return (
     <div ref={shellContainerRef} className="absolute inset-0 flex size-full min-h-0">
-      <div className={hasOpenTabs ? "min-w-0 flex-1 p-2 pl-1 pr-1" : "min-w-0 flex-1 p-2 pl-1"}>
+      <div
+        className={
+          hasOpenTabs
+            ? sidebarVisible
+              ? "min-w-0 flex-1 p-2 pl-1 pr-1"
+              : "min-w-0 flex-1 p-2 pr-1"
+            : sidebarVisible
+              ? "min-w-0 flex-1 p-2 pl-1"
+              : "min-w-0 flex-1 p-2"
+        }
+      >
         <div className="flex size-full min-h-0 flex-col rounded-lg bg-neutral-900/75 shadow inset-shadow-sm inset-shadow-white/3 outline -outline-offset-1 outline-white/10">
           <ThreadHeader
             title={
@@ -139,6 +167,7 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
             }
             threadPath={activeThreadPath}
             workspaceCwd={workspaceCwd}
+            sidebarVisible={sidebarVisible}
           />
 
           <div className="relative min-h-0 flex-1">
