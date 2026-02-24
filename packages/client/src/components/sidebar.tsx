@@ -1,14 +1,22 @@
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { type ThreadSummary, type WorkspaceThreads } from "@moderndev/server/src/extensions/agent/threads";
 import type { WorkspaceThreadSelection } from "@moderndev/server/src/state";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import {
+  Ellipsis,
   FolderClosedIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   GitBranch,
   SquarePen,
+  Trash2,
   type LucideIcon,
   SquareDot,
   SquareMinus,
@@ -21,6 +29,7 @@ import {
   openWorkspace,
   openWorkspaceWithNewThread,
   openWorkspaceWithThread,
+  removeWorkspaceWithThreads,
   setWorkspaceExpanded,
 } from "../lib/workspace";
 import { basename, dirname } from "../utils/path";
@@ -132,6 +141,14 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
     await openWorkspaceWithNewThread(activeCwd);
   }, [activeCwd]);
 
+  const onCreateThreadForWorkspace = useCallback(async (cwd: string) => {
+    await openWorkspaceWithNewThread(cwd);
+  }, []);
+
+  const onRemoveWorkspace = useCallback(async (cwd: string) => {
+    await removeWorkspaceWithThreads(cwd);
+  }, []);
+
   return (
     <div className="flex max-h-screen h-full flex-col p-2 pr-1">
       <div data-tauri-drag-region className="h-[30px] shrink-0" />
@@ -175,6 +192,8 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
                 onActivate={onActivateWorkspace}
                 onToggleExpanded={onToggleWorkspaceExpanded}
                 onOpenThread={onOpenThread}
+                onCreateThread={onCreateThreadForWorkspace}
+                onRemoveWorkspace={onRemoveWorkspace}
               />
             ))}
           </ul>
@@ -221,6 +240,8 @@ function WorkspaceItem({
   onActivate,
   onToggleExpanded,
   onOpenThread,
+  onCreateThread,
+  onRemoveWorkspace,
 }: {
   cwd: string;
   expanded: boolean;
@@ -229,26 +250,62 @@ function WorkspaceItem({
   onActivate: (cwd: string) => Promise<void>;
   onToggleExpanded: (cwd: string) => Promise<void>;
   onOpenThread: (cwd: string, thread: ThreadSummary) => Promise<void>;
+  onCreateThread: (cwd: string) => Promise<void>;
+  onRemoveWorkspace: (cwd: string) => Promise<void>;
 }) {
   const FolderIcon = expanded ? FolderOpenIcon : FolderClosedIcon;
 
   return (
     <li className="w-full">
-      <button
-        type="button"
-        onClick={() => {
-          void (async () => {
-            await onActivate(cwd);
-            await onToggleExpanded(cwd);
-          })();
-        }}
-        className={cn(
-          "hover:bg-white/10 rounded-md px-2.5 -mx-2.5 flex w-[calc(100%+1.25rem)] items-center gap-2 py-1.5 text-xs text-white/80 hover:text-white",
-        )}
-      >
-        <FolderIcon className="size-3.5 shrink-0 text-white/70" />
-        <div className="truncate text-xs">{basename(cwd)}</div>
-      </button>
+      <div className="-mx-2.5 w-[calc(100%+1.25rem)] py-0.5">
+        <div className="group relative flex w-full items-center gap-1 px-2.5">
+          <div className="pointer-events-none absolute inset-0 rounded-md transition-colors group-hover:bg-white/10" />
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                await onActivate(cwd);
+                await onToggleExpanded(cwd);
+              })();
+            }}
+            className={cn(
+              "relative z-10 cursor-pointer rounded-md flex min-w-0 flex-1 items-center gap-2 py-1.5 text-xs text-white/80 group-hover:text-white",
+            )}
+          >
+            <FolderIcon className="size-3.5 shrink-0 text-white/70" />
+            <div className="truncate text-xs">{basename(cwd)}</div>
+          </button>
+
+          <div className="-mr-1.25 relative z-10 flex shrink-0 items-center">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="size-6 rounded-md p-0 text-white/50 outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0 group-hover:text-white/70 hover:text-white/80"
+                  aria-label={`Workspace actions for ${basename(cwd)}`}
+                >
+                  <Ellipsis className="mx-auto size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="bottom">
+                <DropdownMenuItem onSelect={() => void onRemoveWorkspace(cwd)}>
+                  <Trash2 className="size-4" />
+                  Remove
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <button
+              type="button"
+              onClick={() => void onCreateThread(cwd)}
+              className="size-6 rounded-md p-0 text-white/50 group-hover:text-white/70 hover:text-white/80"
+              aria-label={`New thread in ${basename(cwd)}`}
+            >
+              <SquarePen className="mx-auto size-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {expanded && threads.length > 0 && (
         <ul className="mt-0.5 mb-1 -mx-2.5">

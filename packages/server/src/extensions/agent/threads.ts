@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import {
   AuthStorage,
   createAgentSession,
@@ -6,6 +8,7 @@ import {
   SessionManager,
   type SessionInfo,
 } from "@mariozechner/pi-coding-agent";
+import { disposeThreadRuntimes } from "./runtime";
 
 const DEFAULT_THREAD_LIMIT = 12;
 const TITLE_RETRY_BACKOFF_MS = 5 * 60_000;
@@ -62,6 +65,19 @@ export async function listThreadsForWorkspace(cwd: string, limit = DEFAULT_THREA
   const selected = sorted.slice(0, Math.max(limit, 0));
 
   return selected.map((session) => toThreadSummary(session));
+}
+
+export async function removeThreadsForWorkspace(cwd: string): Promise<number> {
+  const sessions = await SessionManager.list(cwd);
+  const threadPaths = [...new Set(sessions.map((session) => path.resolve(session.path)))];
+
+  if (threadPaths.length === 0) {
+    return 0;
+  }
+
+  await disposeThreadRuntimes(threadPaths);
+  await Promise.all(threadPaths.map((threadPath) => rm(threadPath, { force: true })));
+  return threadPaths.length;
 }
 
 function toThreadSummary(session: SessionInfo): ThreadSummary {

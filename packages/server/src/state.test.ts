@@ -10,6 +10,7 @@ import {
   getWorkspaceActiveThread,
   openWorkspace,
   Panel,
+  removeWorkspace,
   setWorkspaceActiveThread,
   state,
 } from "./state";
@@ -259,5 +260,35 @@ describe("openWorkspace", () => {
 
     expect(state.workspaces.value.active).toBe(path.resolve(workspace));
     expect(state.workspaces.value.open).toContain(path.resolve(workspace));
+  });
+
+  test("removes workspace and falls back to another open workspace", async () => {
+    const firstWorkspace = await mkdtemp(path.join(os.tmpdir(), "modern-remove-workspace-first-"));
+    const secondWorkspace = await mkdtemp(path.join(os.tmpdir(), "modern-remove-workspace-second-"));
+    createdPaths.push(firstWorkspace, secondWorkspace);
+
+    await mkdir(path.join(firstWorkspace, ".git"), { recursive: true });
+    await mkdir(path.join(secondWorkspace, ".git"), { recursive: true });
+
+    await openWorkspace(firstWorkspace);
+    await openWorkspace(secondWorkspace);
+    await removeWorkspace(secondWorkspace);
+
+    expect(state.workspaces.value.active).toBe(path.resolve(firstWorkspace));
+    expect(state.workspaces.value.open).toContain(path.resolve(firstWorkspace));
+    expect(state.workspaces.value.open).not.toContain(path.resolve(secondWorkspace));
+  });
+
+  test("removing the last workspace clears active workspace", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "modern-remove-workspace-last-"));
+    createdPaths.push(workspace);
+
+    await mkdir(path.join(workspace, ".git"), { recursive: true });
+
+    await openWorkspace(workspace);
+    await removeWorkspace(workspace);
+
+    expect(state.workspaces.value.active).toBeNull();
+    expect(state.workspaces.value.open).toEqual([]);
   });
 });

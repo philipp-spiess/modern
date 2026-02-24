@@ -20,6 +20,27 @@ const modelRegistry = new ModelRegistry(authStorage);
 const settingsManager = SettingsManager.create();
 const runtimeByThreadPath = new Map<string, Promise<AgentThreadRuntime>>();
 
+async function disposeThreadRuntime(threadPath: string): Promise<void> {
+  const resolvedPath = path.resolve(threadPath);
+  const runtimePromise = runtimeByThreadPath.get(resolvedPath);
+  if (!runtimePromise) {
+    return;
+  }
+
+  runtimeByThreadPath.delete(resolvedPath);
+
+  try {
+    const runtime = await runtimePromise;
+    runtime.session.dispose();
+  } catch (error) {
+    console.error(`Failed to dispose runtime for thread "${resolvedPath}":`, error);
+  }
+}
+
+export async function disposeThreadRuntimes(threadPaths: readonly string[]): Promise<void> {
+  await Promise.all(threadPaths.map((threadPath) => disposeThreadRuntime(threadPath)));
+}
+
 export async function getThreadRuntime(threadPath: string): Promise<AgentThreadRuntime> {
   const resolvedPath = path.resolve(threadPath);
   let runtimePromise = runtimeByThreadPath.get(resolvedPath);

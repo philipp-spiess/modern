@@ -485,6 +485,64 @@ export async function openWorkspaceWithThread(cwd: string, thread: WorkspaceThre
   setWorkspaceActiveThread(cwd, thread);
 }
 
+export async function removeWorkspace(cwd: string): Promise<void> {
+  const resolvedCwd = path.resolve(cwd);
+  const current = state.workspaces.value;
+
+  if (!current.open.includes(resolvedCwd)) {
+    return;
+  }
+
+  const session = workspaceSessions.get(resolvedCwd);
+  if (session) {
+    try {
+      await session.cleanup();
+    } catch (error) {
+      console.error(`Failed to clean up workspace session for "${resolvedCwd}":`, error);
+    }
+    workspaceSessions.delete(resolvedCwd);
+  }
+
+  const nextOpen = current.open.filter((entry) => entry !== resolvedCwd);
+  const nextActive = current.active === resolvedCwd ? (nextOpen[0] ?? null) : current.active;
+
+  state.workspaces.value = {
+    active: nextActive,
+    open: nextOpen,
+  };
+
+  try {
+    await persistOpenWorkspaces(nextOpen);
+  } catch (error) {
+    console.error("Failed to persist workspace registry:", error);
+  }
+
+  if (collapsedWorkspaces.has(resolvedCwd)) {
+    const nextCollapsed = new Set(collapsedWorkspaces);
+    nextCollapsed.delete(resolvedCwd);
+    try {
+      await persistCollapsedWorkspaces(nextCollapsed);
+      collapsedWorkspaces = nextCollapsed;
+    } catch (error) {
+      console.error("Failed to persist collapsed workspaces:", error);
+    }
+  }
+
+  if (current.active === resolvedCwd) {
+    if (nextActive) {
+      await switchActiveGitWatcher(nextActive);
+    } else if (activeGitWatcher) {
+      await activeGitWatcher[Symbol.dispose]();
+      activeGitWatcher = null;
+    }
+
+    syncActiveWorkspaceState();
+    return;
+  }
+
+  bumpWorkspaceStateRevision();
+}
+
 export function registerExtensionCommand(entry: CommandRegistration) {
   const commands = new Map(state.commands.value);
   const existing = commands.get(entry.command);

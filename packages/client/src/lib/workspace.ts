@@ -131,3 +131,17 @@ export async function setWorkspaceExpanded(cwd: string, expanded: boolean) {
     console.error("Failed to persist workspace expansion:", error);
   }
 }
+
+export async function removeWorkspaceWithThreads(cwd: string) {
+  try {
+    const workspaceState = await client.workspace.remove({ cwd });
+    syncWorkspaceState(workspaceState);
+  } catch (error) {
+    showToast({
+      variant: "error",
+      title: "Could not remove workspace",
+      description: "Could not remove this workspace. Please try again.",
+    });
+    console.error("Failed to remove workspace:", error);
+  }
+}

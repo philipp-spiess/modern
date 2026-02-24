@@ -3,6 +3,7 @@ import type { StatusResult } from "simple-git";
 import * as z from "zod";
 import { executeCommand, executeCommandForWorkspace, listRegisteredCommands } from "./extension";
 import { agentRouter } from "./extensions/agent/router";
+import { removeThreadsForWorkspace } from "./extensions/agent/threads";
 import { filesRouter } from "./extensions/files/router";
 import { fileIndex } from "./file-index";
 import { gitStatusSignal, showHead, showStaged, showWorktree, stage, unstage } from "./git";
@@ -18,6 +19,7 @@ import {
   listOpenWorkspaces,
   openWorkspace,
   openWorkspaceWithThread,
+  removeWorkspace as removeWorkspaceFromState,
   setWorkspaceExpanded,
   state,
   workspaceStateRevision,
@@ -119,6 +121,18 @@ export const workspaceActivate = os
   )
   .handler(async ({ input: { cwd } }) => {
     await openWorkspace(cwd);
+    return resolveWorkspaceState();
+  });
+
+export const workspaceRemove = os
+  .input(
+    z.object({
+      cwd: z.string(),
+    }),
+  )
+  .handler(async ({ input: { cwd } }) => {
+    await removeThreadsForWorkspace(cwd);
+    await removeWorkspaceFromState(cwd);
     return resolveWorkspaceState();
   });
 
@@ -366,6 +380,7 @@ type AppRouter = {
     cwd: typeof workspaceCwd;
     open: typeof workspaceOpen;
     activate: typeof workspaceActivate;
+    remove: typeof workspaceRemove;
     setExpanded: typeof workspaceSetExpanded;
     openWithThread: typeof workspaceOpenWithThread;
     openNewThread: typeof workspaceOpenNewThread;
@@ -405,6 +420,7 @@ export const router: AppRouter = {
     cwd: workspaceCwd,
     open: workspaceOpen,
     activate: workspaceActivate,
+    remove: workspaceRemove,
     setExpanded: workspaceSetExpanded,
     openWithThread: workspaceOpenWithThread,
     openNewThread: workspaceOpenNewThread,
