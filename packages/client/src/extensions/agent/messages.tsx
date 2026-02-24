@@ -19,7 +19,7 @@ import {
   Terminal as TerminalIcon,
   WrenchIcon,
 } from "lucide-react";
-import { Component, type ReactNode, memo, useEffect, useRef } from "react";
+import { Component, type ReactNode, memo, useCallback, useEffect, useRef } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -366,7 +366,7 @@ function ReadToolView({
 
   return (
     <Collapsible
-      defaultOpen={hasImages}
+      defaultOpen={false}
       className="group not-prose relative w-full rounded-lg border border-white/8 transition-colors hover:border-white/10"
     >
       {status === "pending" && <BorderBeam />}
@@ -376,14 +376,10 @@ function ReadToolView({
         />
         <span className="shrink-0 text-xs font-medium text-white/70">Read</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{filePath}</span>
-        {lineCount > 0 && status !== "error" && (
+        {lineCount > 0 && !hasImages && status !== "error" && (
           <span className="shrink-0 text-xs text-white/25">{lineCount} lines</span>
         )}
-        {hasImages && (
-          <span className="shrink-0 text-xs text-white/25">
-            {images.length === 1 ? "image" : `${images.length} images`}
-          </span>
-        )}
+        {hasImages && <span className="shrink-0 text-xs text-white/25">{images[0].mimeType}</span>}
         {status === "error" && (
           <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
             Error
@@ -402,8 +398,8 @@ function ReadToolView({
             </DiffErrorBoundary>
           </div>
         )}
-        <ResultImages images={images} />
       </CollapsibleContent>
+      <ResultImages images={images} fileName={fileName} />
     </Collapsible>
   );
 }
@@ -913,16 +909,48 @@ function getResultImages(result?: ToolResultMessage): ImageContent[] {
   return result.content.filter((c): c is ImageContent => c.type === "image");
 }
 
-function ResultImages({ images }: { images: ImageContent[] }) {
+function ResultImages({ images, fileName }: { images: ImageContent[]; fileName?: string }) {
+  const openImageWindow = useCallback(
+    (img: ImageContent) => {
+      import("@tauri-apps/api/webviewWindow").then(({ WebviewWindow }) => {
+        const label = `image-${Date.now()}`;
+        const dataUri = `data:${img.mimeType};base64,${img.data}`;
+        const html = `<!doctype html><html><head><style>*{margin:0;padding:0}html,body{background:#000;height:100%;overflow:hidden}img{width:100%;height:100%;object-fit:contain}</style></head><body><img src="${dataUri}"/></body></html>`;
+        const blob = new Blob([html], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+
+        // Size window to image aspect ratio, capped at 1400 wide
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          const maxW = 1400;
+          const ratio = tempImg.naturalHeight / tempImg.naturalWidth;
+          const w = Math.min(tempImg.naturalWidth, maxW);
+          const h = Math.round(w * ratio) + 32;
+          new WebviewWindow(label, {
+            url,
+            title: fileName ?? "Image Preview",
+            width: w,
+            height: h,
+            center: true,
+            decorations: true,
+          });
+        };
+        tempImg.src = dataUri;
+      });
+    },
+    [fileName],
+  );
+
   if (images.length === 0) return null;
   return (
-    <div className="flex flex-col gap-2 border-t border-white/5 p-3">
+    <div className="flex flex-col gap-2 p-1 pt-0">
       {images.map((img, i) => (
         <img
           key={i}
           src={`data:${img.mimeType};base64,${img.data}`}
           alt="Tool result"
-          className="max-h-96 rounded border border-white/10 object-contain"
+          className="cursor-pointer rounded-sm transition-opacity hover:opacity-80"
+          onClick={() => openImageWindow(img)}
         />
       ))}
     </div>
