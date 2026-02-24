@@ -293,12 +293,6 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
               />
               <SteeringQueueIndicator items={steeringQueue} />
               <FollowUpQueueIndicator items={followUpQueue} />
-              {isStreaming && !thread.state.streamMessage && (
-                <div className="flex items-center gap-2 py-3 text-xs text-white/30">
-                  <span className="size-1.5 animate-pulse rounded-full bg-white/40" />
-                  Thinking…
-                </div>
-              )}
             </>
           ) : null}
         </ChatScrollArea>
