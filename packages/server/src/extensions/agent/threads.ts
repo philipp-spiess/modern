@@ -240,13 +240,33 @@ async function tryGenerateTitle(
 }
 
 const TITLE_MODEL_IDS = ["gpt-5.1-codex-mini", "claude-haiku-4-5", "gemini-3-flash", "gemini-3-flash-preview"];
+const TITLE_MODEL_PROVIDER_PREFERENCES = ["openai-codex", "openai", "anthropic", "google"];
 
 function rankTitleModels(available: AvailableModel[]): AvailableModel[] {
   const ranked: AvailableModel[] = [];
+  const seen = new Set<string>();
+
   for (const id of TITLE_MODEL_IDS) {
-    const match = available.find((m) => m.id === id && !ranked.includes(m));
-    if (match) {
-      ranked.push(match);
+    const matches = available.filter((model) => model.id === id);
+    if (matches.length === 0) {
+      continue;
+    }
+
+    const preferred = TITLE_MODEL_PROVIDER_PREFERENCES.flatMap((provider) =>
+      matches.filter((model) => model.provider === provider),
+    );
+    const remaining = matches
+      .filter((model) => !preferred.includes(model))
+      .sort((left, right) => left.provider.localeCompare(right.provider));
+
+    for (const model of [...preferred, ...remaining]) {
+      const modelKey = `${model.provider}/${model.id}`;
+      if (seen.has(modelKey)) {
+        continue;
+      }
+
+      seen.add(modelKey);
+      ranked.push(model);
     }
   }
 
