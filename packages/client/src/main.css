@@ -153,7 +153,7 @@
   --dv-border-radius: --spacing(3);
   --dv-tab-margin: 0;
   --dv-sash-color: transparent;
-  --dv-active-sash-color: --alpha(var(--color-white) / 20%);
+  --dv-active-sash-color: transparent;
   --dv-active-sash-transition-duration: 0.1s;
   --dv-active-sash-transition-delay: 0;
   --dv-group-view-background-color: transparent;
@@ -200,6 +200,32 @@
       background-color: transparent !important;
       --dv-tab-divider-color: transparent !important;
     }
+  }
+
+  .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash {
+    background: linear-gradient(to bottom, transparent, transparent) !important;
+    transition: background 0.15s ease-in-out !important;
+    transition-delay: 0s !important;
+    border-radius: 9999px;
+    cursor: col-resize !important;
+  }
+
+  .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash:not(.disabled):hover,
+  .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash:not(.disabled):active {
+    background: linear-gradient(to bottom, transparent, --alpha(var(--color-white) / 20%), transparent) !important;
+  }
+
+  .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash {
+    background: linear-gradient(to right, transparent, transparent) !important;
+    transition: background 0.15s ease-in-out !important;
+    transition-delay: 0s !important;
+    border-radius: 9999px;
+    cursor: row-resize !important;
+  }
+
+  .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash:not(.disabled):hover,
+  .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash:not(.disabled):active {
+    background: linear-gradient(to right, transparent, --alpha(var(--color-white) / 20%), transparent) !important;
   }
 
   .dv-pane-container.dv-animated .dv-view.dv-view-terminal,
