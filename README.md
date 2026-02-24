@@ -9,6 +9,10 @@
   Built with Tauri 2, React, and Bun.
 </p>
 
+<p align="center">
+  <img src="docs/screenshot.jpg" alt="Screenshot of Modern" />
+</p>
+
 ---
 
 ## Quick Start
