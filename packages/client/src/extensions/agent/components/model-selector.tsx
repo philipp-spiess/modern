@@ -198,7 +198,7 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
   }
 
   return (
-    <div className="flex items-end text-xs text-white/50">
+    <div className="flex items-center text-xs text-white/50">
       {/* Model combobox */}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild disabled={disabled}>

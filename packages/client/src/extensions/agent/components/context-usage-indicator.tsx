@@ -16,8 +16,8 @@ function getColor(percent: number): string {
 }
 
 function DonutSvg({ percent }: { percent: number }) {
-  const size = 18;
-  const strokeWidth = 2.5;
+  const size = 14;
+  const strokeWidth = 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const filled = (percent / 100) * circumference;

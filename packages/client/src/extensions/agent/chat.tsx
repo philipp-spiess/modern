@@ -391,7 +391,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                   }
                   className="field-sizing-content max-h-36 min-h-10"
                 />
-                <InputGroupAddon align="block-end" className="-ml-3 items-end justify-between">
+                <InputGroupAddon align="block-end" className="-ml-3 items-center justify-between">
                   <div className="flex items-center gap-1">
                     <ModelSelector
                       threadPath={threadPath}
@@ -441,8 +441,13 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                         </InputGroupButton>
                       </>
                     ) : (
-                      <InputGroupButton type="submit" variant="default" disabled={disabled || !draft.trim()}>
-                        <CornerDownLeft className="size-3.5" />
+                      <InputGroupButton
+                        type="submit"
+                        variant="default"
+                        size="icon-xs"
+                        disabled={disabled || !draft.trim()}
+                      >
+                        <CornerDownLeft className="size-3" />
                       </InputGroupButton>
                     )}
                   </div>
