@@ -1,9 +1,11 @@
-import { useRef, useState, type PointerEvent } from "react";
+import { useRef, useState, type PointerEvent, type RefObject } from "react";
 
 type HandleOptions = {
   invert?: boolean;
   min?: number;
   max?: number;
+  unit?: "px" | "percent";
+  containerRef?: RefObject<HTMLElement | null>;
 };
 
 export function useHandle(
@@ -27,7 +29,7 @@ export function useHandle(
     const min = options?.min ?? 0;
     const max = options?.max;
     const clamped = max === undefined ? Math.max(min, nextValue) : Math.max(min, Math.min(max, nextValue));
-    return Math.round(clamped);
+    return options?.unit === "percent" ? Math.round(clamped * 100) / 100 : Math.round(clamped);
   }
 
   function flushQueuedValue() {
@@ -80,7 +82,16 @@ export function useHandle(
     event.preventDefault();
 
     const current = orientation === "horizontal" ? event.clientX : event.clientY;
-    const delta = current - dragState.current.start;
+    let delta = current - dragState.current.start;
+
+    if (options?.unit === "percent" && options.containerRef?.current) {
+      const containerSize =
+        orientation === "horizontal"
+          ? options.containerRef.current.offsetWidth
+          : options.containerRef.current.offsetHeight;
+      delta = containerSize > 0 ? (delta / containerSize) * 100 : 0;
+    }
+
     const signedDelta = options?.invert ? -delta : delta;
 
     scheduleValue(clampValue(dragState.current.startValue + signedDelta));

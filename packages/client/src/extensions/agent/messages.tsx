@@ -1,6 +1,7 @@
 import { File, PatchDiff, WorkerPoolContextProvider } from "@pierre/diffs/react";
 import type {
   AssistantMessage,
+  ImageContent,
   TextContent,
   ThinkingContent,
   ToolCall,
@@ -158,10 +159,25 @@ function UserMessageView({ message }: { message: UserMessage }) {
           .map((c) => c.text)
           .join("\n");
 
+  const images =
+    typeof message.content === "string" ? [] : message.content.filter((c): c is ImageContent => c.type === "image");
+
   return (
     <Message from="user" className="py-3">
       <MessageContent>
         <div className="min-w-0 leading-relaxed whitespace-pre-wrap">{text}</div>
+        {images.length > 0 && (
+          <div className="mt-2 flex flex-col gap-2">
+            {images.map((img, i) => (
+              <img
+                key={i}
+                src={`data:${img.mimeType};base64,${img.data}`}
+                alt="User attachment"
+                className="max-h-96 rounded border border-white/10 object-contain"
+              />
+            ))}
+          </div>
+        )}
       </MessageContent>
     </Message>
   );
@@ -344,11 +360,13 @@ function ReadToolView({
   const fileName = path?.split("/").pop() ?? "unknown";
   const filePath = path?.replace(/^\.\//, "") ?? "";
   const content = getResultText(result);
+  const images = getResultImages(result);
   const lineCount = content ? content.split("\n").length : 0;
+  const hasImages = images.length > 0;
 
   return (
     <Collapsible
-      defaultOpen={false}
+      defaultOpen={hasImages}
       className="group not-prose relative w-full rounded-lg border border-white/8 transition-colors hover:border-white/10"
     >
       {status === "pending" && <BorderBeam />}
@@ -360,6 +378,11 @@ function ReadToolView({
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{filePath}</span>
         {lineCount > 0 && status !== "error" && (
           <span className="shrink-0 text-xs text-white/25">{lineCount} lines</span>
+        )}
+        {hasImages && (
+          <span className="shrink-0 text-xs text-white/25">
+            {images.length === 1 ? "image" : `${images.length} images`}
+          </span>
         )}
         {status === "error" && (
           <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
@@ -379,6 +402,7 @@ function ReadToolView({
             </DiffErrorBoundary>
           </div>
         )}
+        <ResultImages images={images} />
       </CollapsibleContent>
     </Collapsible>
   );
@@ -629,6 +653,7 @@ function GenericToolView({
   status: "pending" | "success" | "error";
 }) {
   const output = getResultText(result);
+  const images = getResultImages(result);
   const preview = Object.values(args).find((v) => typeof v === "string") as string | undefined;
 
   return (
@@ -657,6 +682,7 @@ function GenericToolView({
           )}
           {output && <pre className="whitespace-pre-wrap break-all">{output}</pre>}
         </div>
+        <ResultImages images={images} />
       </CollapsibleContent>
     </Collapsible>
   );
@@ -880,6 +906,27 @@ function getResultText(result?: ToolResultMessage): string | undefined {
     .filter((c): c is TextContent => c.type === "text")
     .map((c) => c.text)
     .join("\n");
+}
+
+function getResultImages(result?: ToolResultMessage): ImageContent[] {
+  if (!result) return [];
+  return result.content.filter((c): c is ImageContent => c.type === "image");
+}
+
+function ResultImages({ images }: { images: ImageContent[] }) {
+  if (images.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2 border-t border-white/5 p-3">
+      {images.map((img, i) => (
+        <img
+          key={i}
+          src={`data:${img.mimeType};base64,${img.data}`}
+          alt="Tool result"
+          className="max-h-96 rounded border border-white/10 object-contain"
+        />
+      ))}
+    </div>
+  );
 }
 
 function convertToPatchFormat(filePath: string, diff: string, lineOffset: number = 1): string {
