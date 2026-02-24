@@ -11,12 +11,12 @@ import type { AgentThreadMessages, AgentThreadStreamMessage } from "@moderndev/s
 import {
   Compass,
   ChevronDownIcon,
-  FilePlus,
   FileText,
+  GlobeIcon,
   ListPlus,
   Pencil,
   Terminal as TerminalIcon,
-  User,
+  WrenchIcon,
 } from "lucide-react";
 import { Component, type ReactNode, memo, useEffect, useRef } from "react";
 
@@ -27,7 +27,6 @@ import { useDiffStyle } from "./diff-style-context";
 
 import { Message, MessageContent, MessageResponse } from "./components/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "./components/reasoning";
-import { Tool, ToolContent, ToolHeader } from "./components/tool";
 
 // ---------------------------------------------------------------------------
 // Local type definitions for custom pi-coding-agent message types
@@ -162,12 +161,7 @@ function UserMessageView({ message }: { message: UserMessage }) {
   return (
     <Message from="user" className="py-3">
       <MessageContent>
-        <div className="flex items-start gap-3">
-          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-white/10">
-            <User className="size-3.5 text-white/70" />
-          </div>
-          <div className="min-w-0 flex-1 pt-0.5 leading-relaxed whitespace-pre-wrap">{text}</div>
-        </div>
+        <div className="min-w-0 leading-relaxed whitespace-pre-wrap">{text}</div>
       </MessageContent>
     </Message>
   );
@@ -263,7 +257,7 @@ function ToolCallView({ call, result }: { call: ToolCall; result?: ToolResultMes
 
   switch (toolName) {
     case "write":
-      return <WriteToolView path={args.path} content={args.content} result={result} status={status} />;
+      return <WriteToolView path={args.path} content={args.content} status={status} />;
     case "read":
       return <ReadToolView path={args.path} result={result} status={status} />;
     case "edit":
@@ -272,6 +266,8 @@ function ToolCallView({ call, result }: { call: ToolCall; result?: ToolResultMes
       );
     case "bash":
       return <BashToolView command={args.command} result={result} status={status} />;
+    case "web_search":
+      return <GenericToolView toolName="WebSearch" icon={GlobeIcon} args={args} result={result} status={status} />;
     default:
       return <GenericToolView toolName={toolName} args={args} result={result} status={status} />;
   }
@@ -284,35 +280,51 @@ function ToolCallView({ call, result }: { call: ToolCall; result?: ToolResultMes
 function WriteToolView({
   path,
   content,
-  result,
   status,
 }: {
   path?: string;
   content?: string;
-  result?: ToolResultMessage;
   status: "pending" | "success" | "error";
 }) {
   const fileName = path?.split("/").pop() ?? "unknown";
+  const filePath = path?.replace(/^\.\//, "") ?? "";
+  const lineCount = content ? content.split("\n").length : 0;
 
   return (
-    <Tool>
-      <ToolHeader
-        icon={<FilePlus className="size-3.5 text-emerald-400" />}
-        title={fileName}
-        status={status}
-        statusText={getResultText(result) ? truncate(getResultText(result)!, 40) : undefined}
-      />
-      <ToolContent>
-        {content && (
-          <DiffErrorBoundary fallback={<pre className="overflow-x-auto p-3 text-xs text-white/50">{content}</pre>}>
-            <File
-              file={{ name: fileName, contents: content }}
-              options={{ theme: "vitesse-dark", overflow: "scroll", disableFileHeader: true, unsafeCSS: DIFFS_CSS }}
-            />
-          </DiffErrorBoundary>
+    <Collapsible
+      defaultOpen
+      className="group not-prose relative w-full rounded-lg border border-white/8 transition-colors hover:border-white/10"
+    >
+      {status === "pending" && <BorderBeam />}
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.02]">
+        <Pencil
+          className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
+        />
+        <span className="shrink-0 text-xs font-medium text-white/70">Write</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{filePath}</span>
+        {lineCount > 0 && status !== "error" && (
+          <span className="shrink-0 text-xs text-emerald-400/70">+{lineCount}</span>
         )}
-      </ToolContent>
-    </Tool>
+        {status === "error" && (
+          <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
+            Error
+          </span>
+        )}
+        <ChevronDownIcon className="size-3.5 shrink-0 text-white/20 transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {content && (
+          <div className="border-t border-white/5">
+            <DiffErrorBoundary fallback={<pre className="overflow-x-auto p-3 text-xs text-white/50">{content}</pre>}>
+              <File
+                file={{ name: fileName, contents: content }}
+                options={{ theme: "vitesse-dark", overflow: "wrap", disableFileHeader: true, unsafeCSS: DIFFS_CSS }}
+              />
+            </DiffErrorBoundary>
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -330,22 +342,45 @@ function ReadToolView({
   status: "pending" | "success" | "error";
 }) {
   const fileName = path?.split("/").pop() ?? "unknown";
+  const filePath = path?.replace(/^\.\//, "") ?? "";
   const content = getResultText(result);
+  const lineCount = content ? content.split("\n").length : 0;
 
   return (
-    <Tool>
-      <ToolHeader icon={<FileText className="size-3.5 text-blue-400" />} title={fileName} status={status} />
-      <ToolContent>
-        {content && (
-          <DiffErrorBoundary fallback={<pre className="overflow-x-auto p-3 text-xs text-white/50">{content}</pre>}>
-            <File
-              file={{ name: fileName, contents: content }}
-              options={{ theme: "vitesse-dark", overflow: "scroll", disableFileHeader: true, unsafeCSS: DIFFS_CSS }}
-            />
-          </DiffErrorBoundary>
+    <Collapsible
+      defaultOpen={false}
+      className="group not-prose relative w-full rounded-lg border border-white/8 transition-colors hover:border-white/10"
+    >
+      {status === "pending" && <BorderBeam />}
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.02]">
+        <FileText
+          className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
+        />
+        <span className="shrink-0 text-xs font-medium text-white/70">Read</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{filePath}</span>
+        {lineCount > 0 && status !== "error" && (
+          <span className="shrink-0 text-xs text-white/25">{lineCount} lines</span>
         )}
-      </ToolContent>
-    </Tool>
+        {status === "error" && (
+          <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
+            Error
+          </span>
+        )}
+        <ChevronDownIcon className="size-3.5 shrink-0 text-white/20 transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {content && (
+          <div className="border-t border-white/5">
+            <DiffErrorBoundary fallback={<pre className="overflow-x-auto p-3 text-xs text-white/50">{content}</pre>}>
+              <File
+                file={{ name: fileName, contents: content }}
+                options={{ theme: "vitesse-dark", overflow: "wrap", disableFileHeader: true, unsafeCSS: DIFFS_CSS }}
+              />
+            </DiffErrorBoundary>
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -367,6 +402,7 @@ function EditToolView({
   status: "pending" | "success" | "error";
 }) {
   const fileName = path?.split("/").pop() ?? "unknown";
+  const filePath = path?.replace(/^\.\//, "") ?? "";
   const diffStyle = useDiffStyle();
   const diff = result?.details?.diff as string | undefined;
   const patch = diff
@@ -375,32 +411,61 @@ function EditToolView({
       ? buildSimpleDiff(oldText, newText)
       : null;
 
+  // Compute diff stats from the raw diff or patch
+  const diffSource = diff ?? patch ?? "";
+  const added = (diffSource.match(/^\+[^+]/gm) || []).length;
+  const removed = (diffSource.match(/^-[^-]/gm) || []).length;
+
   return (
-    <Tool defaultOpen>
-      <ToolHeader icon={<Pencil className="size-3.5 text-amber-400" />} title={fileName} status={status} />
-      <ToolContent>
-        {patch && (
-          <DiffErrorBoundary
-            fallback={
-              <pre className="overflow-x-auto p-3 text-xs text-white/50">{diff ?? `${oldText}\n→\n${newText}`}</pre>
-            }
-          >
-            <PatchDiff
-              patch={patch}
-              options={{
-                theme: "vitesse-dark",
-                diffStyle,
-                diffIndicators: "bars",
-                lineDiffType: "word-alt",
-                disableFileHeader: true,
-                overflow: "scroll",
-                unsafeCSS: DIFFS_PATCH_CSS,
-              }}
-            />
-          </DiffErrorBoundary>
+    <Collapsible
+      defaultOpen
+      className="group not-prose relative w-full rounded-lg border border-white/8 transition-colors hover:border-white/10"
+    >
+      {status === "pending" && <BorderBeam />}
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.02]">
+        <Pencil
+          className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
+        />
+        <span className="shrink-0 text-xs font-medium text-white/70">Edit</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{filePath}</span>
+        {(added > 0 || removed > 0) && status !== "error" && (
+          <span className="flex shrink-0 items-center gap-1.5 text-xs">
+            {added > 0 && <span className="text-emerald-400/70">+{added}</span>}
+            {removed > 0 && <span className="text-red-400/70">-{removed}</span>}
+          </span>
         )}
-      </ToolContent>
-    </Tool>
+        {status === "error" && (
+          <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
+            Error
+          </span>
+        )}
+        <ChevronDownIcon className="size-3.5 shrink-0 text-white/20 transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {patch && (
+          <div className="border-t border-white/5">
+            <DiffErrorBoundary
+              fallback={
+                <pre className="overflow-x-auto p-3 text-xs text-white/50">{diff ?? `${oldText}\n→\n${newText}`}</pre>
+              }
+            >
+              <PatchDiff
+                patch={patch}
+                options={{
+                  theme: "vitesse-dark",
+                  diffStyle,
+                  diffIndicators: "bars",
+                  lineDiffType: "word-alt",
+                  disableFileHeader: true,
+                  overflow: "scroll",
+                  unsafeCSS: DIFFS_PATCH_CSS,
+                }}
+              />
+            </DiffErrorBoundary>
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -552,29 +617,48 @@ function BashToolView({
 
 function GenericToolView({
   toolName,
+  icon: Icon = WrenchIcon,
   args,
   result,
   status,
 }: {
   toolName: string;
+  icon?: React.ComponentType<{ className?: string }>;
   args: Record<string, unknown>;
   result?: ToolResultMessage;
   status: "pending" | "success" | "error";
 }) {
   const output = getResultText(result);
+  const preview = Object.values(args).find((v) => typeof v === "string") as string | undefined;
 
   return (
-    <Tool defaultOpen={false}>
-      <ToolHeader title={toolName} status={status} />
-      <ToolContent>
-        <div className="max-h-64 overflow-auto p-3 text-xs text-white/50">
+    <Collapsible
+      defaultOpen={false}
+      className="group not-prose relative w-full rounded-lg border border-white/8 transition-colors hover:border-white/10"
+    >
+      {status === "pending" && <BorderBeam />}
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.02]">
+        <Icon
+          className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
+        />
+        <span className="shrink-0 text-xs font-medium text-white/70">{toolName}</span>
+        {preview && <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{preview}</span>}
+        {status === "error" && (
+          <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
+            Error
+          </span>
+        )}
+        <ChevronDownIcon className="size-3.5 shrink-0 text-white/20 transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="max-h-64 overflow-auto border-t border-white/5 p-3 text-xs text-white/50">
           {Object.keys(args).length > 0 && (
             <pre className="mb-2 whitespace-pre-wrap break-all">{JSON.stringify(args, null, 2)}</pre>
           )}
           {output && <pre className="whitespace-pre-wrap break-all">{output}</pre>}
         </div>
-      </ToolContent>
-    </Tool>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -796,10 +880,6 @@ function getResultText(result?: ToolResultMessage): string | undefined {
     .filter((c): c is TextContent => c.type === "text")
     .map((c) => c.text)
     .join("\n");
-}
-
-function truncate(str: string, max: number): string {
-  return str.length > max ? str.slice(0, max) + "…" : str;
 }
 
 function convertToPatchFormat(filePath: string, diff: string, lineOffset: number = 1): string {

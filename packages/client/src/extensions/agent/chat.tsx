@@ -172,7 +172,7 @@ function ChatScrollArea({
 
   return (
     <div ref={scrollRef} role="log" className="min-h-0 flex-1 overflow-y-auto px-4">
-      <div ref={contentRef} className="flex flex-col pb-4">
+      <div ref={contentRef} className="flex flex-col pb-10">
         {children}
       </div>
     </div>
@@ -357,90 +357,96 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
               </button>
             </div>
           )}
-          {isStreaming && <WorkingIndicator />}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send("auto");
-            }}
-          >
-            <InputGroup
-              className={cn(
-                "border-0 inset-ring inset-ring-white/12 bg-white/[0.03]",
-                isStreaming && "inset-ring-white/20",
-              )}
+          <div className="relative">
+            {isStreaming && (
+              <div className="absolute bottom-full left-0 pb-1">
+                <WorkingIndicator />
+              </div>
+            )}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send("auto");
+              }}
             >
-              <InputGroupTextarea
-                autoFocus
-                value={draft}
-                onChange={(e) => setDraft(e.currentTarget.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  createThreadFromDraftMutation.isPending
-                    ? "Creating thread…"
-                    : isStreaming
-                      ? "Steer or queue a follow-up…"
-                      : "Send a message…"
-                }
-                className="field-sizing-content max-h-36 min-h-10"
-              />
-              <InputGroupAddon align="block-end" className="-ml-3 items-end justify-between">
-                <div className="flex items-center gap-1">
-                  <ModelSelector
-                    threadPath={threadPath}
-                    meta={thread.state ?? null}
-                    onMetaUpdate={handleMetaUpdate}
-                    disabled={isDraftThread}
-                  />
-                  {isStreaming && (
-                    <>
-                      <InputGroupButton
-                        type="button"
-                        onClick={() => void send("steer")}
-                        disabled={disabled || !draft.trim()}
-                        className="text-amber-300/70 hover:text-amber-300"
-                      >
-                        <Compass className="size-3.5" />
-                        <span>Steer</span>
-                      </InputGroupButton>
-                      <InputGroupButton
-                        type="button"
-                        onClick={() => void send("followUp")}
-                        disabled={disabled || !draft.trim()}
-                        className="text-emerald-300/70 hover:text-emerald-300"
-                      >
-                        <ListPlus className="size-3.5" />
-                        <span>Follow-up</span>
-                      </InputGroupButton>
-                    </>
-                  )}
-                </div>
+              <InputGroup
+                className={cn(
+                  "border-0 inset-ring inset-ring-white/12 bg-white/[0.03]",
+                  isStreaming && "inset-ring-white/20",
+                )}
+              >
+                <InputGroupTextarea
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.currentTarget.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    createThreadFromDraftMutation.isPending
+                      ? "Creating thread…"
+                      : isStreaming
+                        ? "Steer or queue a follow-up…"
+                        : "Send a message…"
+                  }
+                  className="field-sizing-content max-h-36 min-h-10"
+                />
+                <InputGroupAddon align="block-end" className="-ml-3 items-end justify-between">
+                  <div className="flex items-center gap-1">
+                    <ModelSelector
+                      threadPath={threadPath}
+                      meta={thread.state ?? null}
+                      onMetaUpdate={handleMetaUpdate}
+                      disabled={isDraftThread}
+                    />
+                    {isStreaming && (
+                      <>
+                        <InputGroupButton
+                          type="button"
+                          onClick={() => void send("steer")}
+                          disabled={disabled || !draft.trim()}
+                          className="text-amber-300/70 hover:text-amber-300"
+                        >
+                          <Compass className="size-3.5" />
+                          <span>Steer</span>
+                        </InputGroupButton>
+                        <InputGroupButton
+                          type="button"
+                          onClick={() => void send("followUp")}
+                          disabled={disabled || !draft.trim()}
+                          className="text-emerald-300/70 hover:text-emerald-300"
+                        >
+                          <ListPlus className="size-3.5" />
+                          <span>Follow-up</span>
+                        </InputGroupButton>
+                      </>
+                    )}
+                  </div>
 
-                <div className="flex items-center gap-1">
-                  {isStreaming ? (
-                    <>
-                      <InputGroupButton type="submit" disabled={disabled || !draft.trim()}>
-                        <Send className="size-3.5" />
+                  <div className="flex items-center gap-1">
+                    {isStreaming ? (
+                      <>
+                        <InputGroupButton type="submit" disabled={disabled || !draft.trim()}>
+                          <Send className="size-3.5" />
+                        </InputGroupButton>
+                        <InputGroupButton
+                          type="button"
+                          onClick={() => void thread.abort()}
+                          disabled={thread.isAborting}
+                          className="text-rose-300/70 hover:text-rose-300"
+                        >
+                          <Square className="size-3.5" />
+                          <span>Stop</span>
+                        </InputGroupButton>
+                      </>
+                    ) : (
+                      <InputGroupButton type="submit" variant="default" disabled={disabled || !draft.trim()}>
+                        <CornerDownLeft className="size-3.5" />
                       </InputGroupButton>
-                      <InputGroupButton
-                        type="button"
-                        onClick={() => void thread.abort()}
-                        disabled={thread.isAborting}
-                        className="text-rose-300/70 hover:text-rose-300"
-                      >
-                        <Square className="size-3.5" />
-                        <span>Stop</span>
-                      </InputGroupButton>
-                    </>
-                  ) : (
-                    <InputGroupButton type="submit" variant="default" disabled={disabled || !draft.trim()}>
-                      <CornerDownLeft className="size-3.5" />
-                    </InputGroupButton>
-                  )}
-                </div>
-              </InputGroupAddon>
-            </InputGroup>
-          </form>
+                    )}
+                  </div>
+                </InputGroupAddon>
+              </InputGroup>
+            </form>
+          </div>
         </div>
       </div>
     </DiffStyleContext.Provider>
