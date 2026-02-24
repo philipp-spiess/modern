@@ -139,7 +139,6 @@ type TabsProps = {
 
 function cloneTabs(tabs: TabsType): TabsType {
   return {
-    activePanelId: tabs.activePanelId,
     groups: tabs.groups.map((group) => ({
       ...group,
       tabs: group.tabs.map((tab) => ({ ...tab })),
@@ -287,32 +286,14 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
       }
       panel.api.updateParameters(panelData);
     });
-
-    // If the server requested a specific panel to be focused, activate it.
-    if (tabsData.activePanelId) {
-      const panelToFocus = api.getPanel(tabsData.activePanelId);
-      if (panelToFocus) {
-        panelToFocus.api.setActive();
-      }
-    }
   }, [active, tabsData, panelsData]);
 
   const handleReady = (event: DockviewReadyEvent) => {
     apiRef.current = event.api;
     event.api.onDidRemovePanel((e) => {
-      // If focus was inside the tabs pane, re-focus the newly active panel
-      // after dockview finishes its layout so the user can keep interacting.
-      const hadFocus = containerRef.current?.contains(document.activeElement) ?? false;
-
       setTabsData((current) => removeTab(current, e.id));
       setPanelsData((current) => current.filter((panel) => panel.id !== e.id));
       void client.tabs.close({ tabId: e.id, cwd: workspaceCwd });
-
-      if (hadFocus) {
-        requestAnimationFrame(() => {
-          event.api.focus();
-        });
-      }
     });
   };
 
