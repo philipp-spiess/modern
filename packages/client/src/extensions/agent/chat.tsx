@@ -18,6 +18,7 @@ import {
   QueueSectionContent,
   QueueSectionTrigger,
 } from "./components/queue";
+import { WorkingIndicator } from "./components/working-indicator";
 import { DiffStyleContext, useDiffStyleStore } from "./diff-style-context";
 import { FollowUpQueueIndicator, MessageList, SteeringQueueIndicator } from "./messages";
 import { useAgentThread } from "./use-agent-thread";
@@ -356,6 +357,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
               </button>
             </div>
           )}
+          {isStreaming && <WorkingIndicator />}
           <form
             onSubmit={(e) => {
               e.preventDefault();
