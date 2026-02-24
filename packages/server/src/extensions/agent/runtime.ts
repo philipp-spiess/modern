@@ -9,6 +9,7 @@ import {
   type AgentSession,
 } from "@mariozechner/pi-coding-agent";
 import type {
+  AgentDraftDefaults,
   AgentThreadContextUsage,
   AgentThreadMetaState,
   AgentThreadModelSummary,
@@ -160,6 +161,48 @@ export function listAvailableModels(): AvailableModelInfo[] {
     name: m.name ?? m.id,
     reasoning: m.reasoning,
   }));
+}
+
+export async function getDraftDefaultsForWorkspace(
+  cwd: string,
+  modelSelection?: { provider: string; modelId: string },
+): Promise<AgentDraftDefaults> {
+  const resolvedCwd = path.resolve(cwd);
+  const { session } = await createAgentSession({
+    cwd: resolvedCwd,
+    authStorage,
+    modelRegistry,
+    sessionManager: SessionManager.inMemory(resolvedCwd),
+  });
+
+  try {
+    if (modelSelection) {
+      const selectedModel = modelRegistry.find(modelSelection.provider, modelSelection.modelId);
+      if (!selectedModel) {
+        throw new Error(`Model not found: ${modelSelection.provider}/${modelSelection.modelId}`);
+      }
+
+      await session.setModel(selectedModel);
+    }
+
+    const model = session.model
+      ? {
+          provider: session.model.provider,
+          id: session.model.id,
+          name: session.model.name ?? session.model.id,
+          reasoning: session.model.reasoning,
+        }
+      : null;
+
+    return {
+      model,
+      thinkingLevel: session.thinkingLevel,
+      supportsThinking: session.supportsThinking(),
+      availableThinkingLevels: session.getAvailableThinkingLevels(),
+    };
+  } finally {
+    session.dispose();
+  }
 }
 
 export function getEnabledModels(): string[] {

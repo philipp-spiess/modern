@@ -39,6 +39,13 @@ export interface AvailableModelInfo {
   reasoning: boolean;
 }
 
+export interface AgentDraftDefaults {
+  model: AvailableModelInfo | null;
+  thinkingLevel: AgentThreadThinkingLevel;
+  supportsThinking: boolean;
+  availableThinkingLevels: string[];
+}
+
 export interface AgentThreadViewState extends AgentThreadMetaState {
   threadPath: string;
   messages: AgentThreadMessages;

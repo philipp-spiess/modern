@@ -7,6 +7,7 @@ import {
   getThreadMetaState,
   getThreadRuntime,
   getThreadViewState,
+  getDraftDefaultsForWorkspace,
   getEnabledModels,
   listAvailableModels,
   setEnabledModels,
@@ -15,6 +16,7 @@ import {
 } from "./runtime";
 import { listThreadsForWorkspace, type WorkspaceThreads } from "./threads";
 import type {
+  AgentDraftDefaults,
   AgentThreadAbortResult,
   AgentThreadDeliveryMode,
   AgentThreadMessageTail,
@@ -191,6 +193,33 @@ export const modelsList = os.handler(async () => {
   return { models: listAvailableModels() satisfies AvailableModelInfo[] };
 });
 
+export const draftDefaults = os
+  .input(
+    z
+      .object({
+        cwd: z.string().min(1),
+        provider: z.string().min(1).optional(),
+        modelId: z.string().min(1).optional(),
+      })
+      .refine(
+        (value) => {
+          const hasProvider = Boolean(value.provider);
+          const hasModelId = Boolean(value.modelId);
+          return hasProvider === hasModelId;
+        },
+        {
+          message: "provider and modelId must be provided together",
+        },
+      ),
+  )
+  .handler(async ({ input }) => {
+    const defaults = await getDraftDefaultsForWorkspace(
+      input.cwd,
+      input.provider && input.modelId ? { provider: input.provider, modelId: input.modelId } : undefined,
+    );
+    return { defaults } satisfies { defaults: AgentDraftDefaults };
+  });
+
 export const threadSetModel = os
   .input(
     z.object({
@@ -234,6 +263,7 @@ export const agentRouter = {
   threadSend: sendThreadMessage,
   threadAbort: abortThread,
   modelsList,
+  draftDefaults,
   enabledModelsList,
   enabledModelsSet,
   threadSetModel,

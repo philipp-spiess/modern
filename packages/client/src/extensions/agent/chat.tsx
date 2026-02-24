@@ -1,7 +1,11 @@
 import { InputGroup, InputGroupAddon, InputGroupButton } from "@/components/ui/input-group";
 import { RichInput, type RichInputHandle } from "@/components/ui/rich-input";
 import { cn } from "@/lib/utils";
-import type { AgentThreadDeliveryMode, AgentThreadMetaState } from "@moderndev/server/src/extensions/agent/types";
+import type {
+  AgentThreadDeliveryMode,
+  AgentThreadMetaState,
+  AvailableModelInfo,
+} from "@moderndev/server/src/extensions/agent/types";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowDown, Compass, CornerDownLeft, ListPlus, Loader2, Send, Square } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -45,6 +49,123 @@ type ScrollToBottomFn = (behavior?: string) => void;
 
 /** Distance from the bottom (px) within which we consider the user "at the bottom". */
 const BOTTOM_THRESHOLD = 10;
+const DRAFT_PREFERENCES_KEY = "agent:draftPreferences";
+
+interface DraftPreferences {
+  model: AvailableModelInfo | null;
+  thinkingLevel: AgentThreadMetaState["thinkingLevel"];
+  supportsThinking: boolean;
+  availableThinkingLevels: string[];
+}
+
+function createDefaultDraftPreferences(): DraftPreferences {
+  return {
+    model: null,
+    thinkingLevel: "off",
+    supportsThinking: false,
+    availableThinkingLevels: ["off"],
+  };
+}
+
+function readDraftPreferencesFromStorage(): DraftPreferences | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_PREFERENCES_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as {
+      model?: unknown;
+      thinkingLevel?: unknown;
+      supportsThinking?: unknown;
+      availableThinkingLevels?: unknown;
+    };
+    const model = parsed.model;
+
+    const normalizedModel: AvailableModelInfo | null =
+      typeof model === "object" &&
+      model !== null &&
+      typeof (model as AvailableModelInfo).provider === "string" &&
+      typeof (model as AvailableModelInfo).id === "string" &&
+      typeof (model as AvailableModelInfo).name === "string" &&
+      typeof (model as AvailableModelInfo).reasoning === "boolean"
+        ? {
+            provider: (model as AvailableModelInfo).provider,
+            id: (model as AvailableModelInfo).id,
+            name: (model as AvailableModelInfo).name,
+            reasoning: (model as AvailableModelInfo).reasoning,
+          }
+        : null;
+
+    const thinkingLevel =
+      typeof parsed.thinkingLevel === "string"
+        ? (parsed.thinkingLevel as AgentThreadMetaState["thinkingLevel"])
+        : "off";
+
+    if (typeof parsed.supportsThinking !== "boolean") {
+      return null;
+    }
+
+    if (
+      !Array.isArray(parsed.availableThinkingLevels) ||
+      !parsed.availableThinkingLevels.every((v) => typeof v === "string")
+    ) {
+      return null;
+    }
+
+    const availableThinkingLevels = Array.from(new Set(parsed.availableThinkingLevels.filter(Boolean)));
+    if (!availableThinkingLevels.includes("off")) {
+      availableThinkingLevels.unshift("off");
+    }
+
+    if (!availableThinkingLevels.includes(thinkingLevel)) {
+      availableThinkingLevels.push(thinkingLevel);
+    }
+
+    return {
+      model: normalizedModel,
+      thinkingLevel,
+      supportsThinking: parsed.supportsThinking,
+      availableThinkingLevels,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeDraftPreferencesToStorage(preferences: DraftPreferences): void {
+  try {
+    localStorage.setItem(DRAFT_PREFERENCES_KEY, JSON.stringify(preferences));
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+async function applyDraftPreferencesToThread(
+  threadPath: string,
+  { model, thinkingLevel }: Pick<DraftPreferences, "model" | "thinkingLevel">,
+): Promise<void> {
+  if (!model) {
+    return;
+  }
+
+  const modelResult = await client.agent.threadSetModel({
+    threadPath,
+    provider: model.provider,
+    modelId: model.id,
+  });
+
+  if (
+    thinkingLevel !== "off" &&
+    modelResult.meta.supportsThinking &&
+    modelResult.meta.availableThinkingLevels.includes(thinkingLevel)
+  ) {
+    await client.agent.threadSetThinkingLevel({
+      threadPath,
+      level: thinkingLevel,
+    });
+  }
+}
 
 function ChatScrollArea({
   children,
@@ -193,20 +314,118 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   const isDraftThread = state.mode === "draft" || !threadPath;
 
   const [hasContent, setHasContent] = useState(false);
+  const [draftPreferences, setDraftPreferences] = useState<DraftPreferences>(() => createDefaultDraftPreferences());
+  const [draftPreferencesLoaded, setDraftPreferencesLoaded] = useState(false);
   const richInputRef = useRef<RichInputHandle>(null);
   const diffStyle = useDiffStyleStore();
   const thread = useAgentThread(isDraftThread ? undefined : threadPath);
   const scrollToBottomRef = useRef<ScrollToBottomFn | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const draftModelMetaRequestId = useRef(0);
+  const draftModel = draftPreferences.model;
+  const draftThinkingLevel = draftPreferences.thinkingLevel;
+  const draftSupportsThinking = draftPreferences.supportsThinking;
+  const draftAvailableThinkingLevels = draftPreferences.availableThinkingLevels;
+
+  useEffect(() => {
+    if (!isDraftThread) {
+      return;
+    }
+
+    const storedPreferences = readDraftPreferencesFromStorage();
+    if (storedPreferences) {
+      setDraftPreferences(storedPreferences);
+      setDraftPreferencesLoaded(true);
+      return;
+    }
+
+    if (!workspaceCwd) {
+      setDraftPreferences(createDefaultDraftPreferences());
+      setDraftPreferencesLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
+    setDraftPreferencesLoaded(false);
+
+    void (async () => {
+      try {
+        const { defaults } = await client.agent.draftDefaults({ cwd: workspaceCwd });
+        if (cancelled) {
+          return;
+        }
+
+        const nextPreferences: DraftPreferences = {
+          model: defaults.model,
+          thinkingLevel: defaults.thinkingLevel,
+          supportsThinking: defaults.supportsThinking,
+          availableThinkingLevels: defaults.availableThinkingLevels,
+        };
+
+        setDraftPreferences(nextPreferences);
+        writeDraftPreferencesToStorage(nextPreferences);
+      } catch (error) {
+        setDraftPreferences(createDefaultDraftPreferences());
+        console.error("Failed to load draft thread defaults:", error);
+      } finally {
+        if (!cancelled) {
+          setDraftPreferencesLoaded(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDraftThread, workspaceCwd]);
+
+  useEffect(() => {
+    if (!isDraftThread || !draftPreferencesLoaded) {
+      return;
+    }
+
+    writeDraftPreferencesToStorage(draftPreferences);
+  }, [draftPreferences, draftPreferencesLoaded, isDraftThread]);
+
+  useEffect(() => {
+    if (isDraftThread || !thread.state?.model) {
+      return;
+    }
+
+    writeDraftPreferencesToStorage({
+      model: {
+        provider: thread.state.model.provider,
+        id: thread.state.model.id,
+        name: thread.state.model.name,
+        reasoning: thread.state.supportsThinking,
+      },
+      thinkingLevel: thread.state.thinkingLevel,
+      supportsThinking: thread.state.supportsThinking,
+      availableThinkingLevels: thread.state.availableThinkingLevels,
+    });
+  }, [isDraftThread, thread.state]);
 
   const createThreadFromDraftMutation = useMutation({
-    mutationFn: async (text: string) => {
+    mutationFn: async ({
+      text,
+      preferences,
+    }: {
+      text: string;
+      preferences: Pick<DraftPreferences, "model" | "thinkingLevel">;
+    }) => {
       if (!workspaceCwd) {
         throw new Error("Cannot create a thread without an active workspace.");
       }
 
       const created = await client.agent.threadCreate({ cwd: workspaceCwd });
       await openWorkspaceWithThread(workspaceCwd, created.threadPath, "New Thread");
+
+      try {
+        await applyDraftPreferencesToThread(created.threadPath, preferences);
+      } catch (error) {
+        console.error("Failed to apply draft model preference:", error);
+      }
+
       await client.agent.threadSend({
         threadPath: created.threadPath,
         text,
@@ -219,7 +438,77 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
 
   const isStreaming = !isDraftThread && Boolean(thread.state?.isStreaming);
   const disabled =
-    thread.isSending || thread.isAborting || createThreadFromDraftMutation.isPending || (!isDraftThread && !threadPath);
+    thread.isSending ||
+    thread.isAborting ||
+    createThreadFromDraftMutation.isPending ||
+    (isDraftThread && !draftPreferencesLoaded) ||
+    (!isDraftThread && !threadPath);
+
+  const handleDraftModelChange = useCallback(
+    (model: AvailableModelInfo | null) => {
+      if (!model) {
+        setDraftPreferences(createDefaultDraftPreferences());
+        return;
+      }
+
+      if (!model.reasoning) {
+        setDraftPreferences({
+          model,
+          thinkingLevel: "off",
+          supportsThinking: false,
+          availableThinkingLevels: ["off"],
+        });
+        return;
+      }
+
+      setDraftPreferences((current) => ({
+        ...current,
+        model,
+        supportsThinking: true,
+        availableThinkingLevels: ["off"],
+      }));
+
+      if (!workspaceCwd) {
+        return;
+      }
+
+      const requestId = ++draftModelMetaRequestId.current;
+
+      void (async () => {
+        try {
+          const { defaults } = await client.agent.draftDefaults({
+            cwd: workspaceCwd,
+            provider: model.provider,
+            modelId: model.id,
+          });
+
+          if (requestId !== draftModelMetaRequestId.current) {
+            return;
+          }
+
+          setDraftPreferences((current) => ({
+            ...current,
+            supportsThinking: defaults.supportsThinking,
+            availableThinkingLevels: defaults.availableThinkingLevels,
+            thinkingLevel: defaults.availableThinkingLevels.includes(current.thinkingLevel)
+              ? current.thinkingLevel
+              : defaults.thinkingLevel,
+          }));
+        } catch (error) {
+          if (requestId !== draftModelMetaRequestId.current) {
+            return;
+          }
+
+          console.error("Failed to load draft model metadata:", error);
+        }
+      })();
+    },
+    [workspaceCwd],
+  );
+
+  const handleDraftThinkingLevelChange = useCallback((level: AgentThreadMetaState["thinkingLevel"]) => {
+    setDraftPreferences((current) => ({ ...current, thinkingLevel: level }));
+  }, []);
 
   const send = useCallback(
     async (delivery: AgentThreadDeliveryMode) => {
@@ -233,13 +522,19 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
       scrollToBottomRef.current?.("smooth");
 
       if (isDraftThread) {
-        await createThreadFromDraftMutation.mutateAsync(text);
+        await createThreadFromDraftMutation.mutateAsync({
+          text,
+          preferences: {
+            model: draftModel,
+            thinkingLevel: draftThinkingLevel,
+          },
+        });
         return;
       }
 
       await thread.send(text, delivery);
     },
-    [createThreadFromDraftMutation, isDraftThread, thread],
+    [createThreadFromDraftMutation, draftModel, draftThinkingLevel, isDraftThread, thread],
   );
 
   const handleEnter = useCallback(() => {
@@ -384,9 +679,11 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                     placeholder={
                       createThreadFromDraftMutation.isPending
                         ? "Creating thread…"
-                        : isStreaming
-                          ? "Steer or queue a follow-up…"
-                          : "Send a message…"
+                        : isDraftThread && !draftPreferencesLoaded
+                          ? "Loading model defaults…"
+                          : isStreaming
+                            ? "Steer or queue a follow-up…"
+                            : "Send a message…"
                     }
                     className="field-sizing-content max-h-36 min-h-10"
                   />
@@ -397,7 +694,13 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                       threadPath={threadPath}
                       meta={thread.state ?? null}
                       onMetaUpdate={handleMetaUpdate}
-                      disabled={isDraftThread}
+                      draftModel={draftModel}
+                      draftThinkingLevel={draftThinkingLevel}
+                      draftSupportsThinking={draftSupportsThinking}
+                      draftAvailableThinkingLevels={draftAvailableThinkingLevels}
+                      onDraftModelChange={handleDraftModelChange}
+                      onDraftThinkingLevelChange={handleDraftThinkingLevelChange}
+                      disabled={createThreadFromDraftMutation.isPending || (isDraftThread && !draftPreferencesLoaded)}
                     />
                     {isStreaming && (
                       <>

@@ -21,6 +21,11 @@ const THINKING_LEVEL_LABELS: Record<string, string> = {
   xhigh: "Extra high",
 };
 
+function normalizeThinkingLevels(levels: string[] | undefined): string[] {
+  const normalized = Array.from(new Set((levels ?? []).filter((level) => level && level !== "off")));
+  return ["off", ...normalized.slice(-3)];
+}
+
 function ThinkingDots({ level, levels }: { level: string; levels: string[] }) {
   const nonOff = levels.filter((l) => l !== "off");
   const index = nonOff.indexOf(level);
@@ -108,10 +113,27 @@ interface ModelSelectorProps {
   meta: AgentThreadMetaState | null;
   /** Called after a successful model or thinking level change so the parent can apply the meta. */
   onMetaUpdate: (meta: AgentThreadMetaState) => void;
+  draftModel?: AvailableModelInfo | null;
+  draftThinkingLevel?: AgentThreadMetaState["thinkingLevel"];
+  draftSupportsThinking?: boolean;
+  draftAvailableThinkingLevels?: string[];
+  onDraftModelChange?: (model: AvailableModelInfo | null) => void;
+  onDraftThinkingLevelChange?: (level: AgentThreadMetaState["thinkingLevel"]) => void;
   disabled?: boolean;
 }
 
-export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: ModelSelectorProps) {
+export function ModelSelector({
+  threadPath,
+  meta,
+  onMetaUpdate,
+  draftModel,
+  draftThinkingLevel = "off",
+  draftSupportsThinking,
+  draftAvailableThinkingLevels,
+  onDraftModelChange,
+  onDraftThinkingLevelChange,
+  disabled,
+}: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [thinkingPending, setThinkingPending] = useState(false);
 
@@ -130,23 +152,37 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
   });
 
   const groups = useMemo(() => groupByProvider(modelsQuery.data?.models ?? []), [modelsQuery.data]);
+  const isDraftMode = !threadPath;
 
-  const currentModel = meta?.model ?? null;
-  const currentThinking = meta?.thinkingLevel ?? "off";
-  const supportsThinking = meta?.supportsThinking ?? false;
+  const currentModel = isDraftMode ? (draftModel ?? null) : (meta?.model ?? null);
+  const currentThinking = isDraftMode ? draftThinkingLevel : (meta?.thinkingLevel ?? "off");
+  const supportsThinking = isDraftMode
+    ? (draftSupportsThinking ?? Boolean(draftModel?.reasoning))
+    : (meta?.supportsThinking ?? false);
 
-  // The server already includes "off" in availableThinkingLevels when the model
-  // supports thinking. Keep only "off" + the 3 highest non-off levels.
   const availableLevels = useMemo(() => {
-    const levels = meta?.availableThinkingLevels ?? ["off"];
-    const nonOff = levels.filter((l) => l !== "off");
-    return ["off", ...nonOff.slice(-3)];
-  }, [meta?.availableThinkingLevels]);
+    if (isDraftMode) {
+      return normalizeThinkingLevels(draftAvailableThinkingLevels);
+    }
+
+    return normalizeThinkingLevels(meta?.availableThinkingLevels);
+  }, [draftAvailableThinkingLevels, isDraftMode, meta?.availableThinkingLevels]);
 
   const handleSelectModel = useCallback(
     async (model: AvailableModelInfo) => {
-      if (!threadPath) return;
       setOpen(false);
+
+      if (isDraftMode) {
+        onDraftModelChange?.(model);
+
+        if (!model.reasoning) {
+          onDraftThinkingLevelChange?.("off");
+        }
+
+        return;
+      }
+
+      if (!threadPath) return;
       try {
         const result = await client.agent.threadSetModel({
           threadPath,
@@ -158,7 +194,7 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
         console.error("Failed to set model:", err);
       }
     },
-    [threadPath, onMetaUpdate],
+    [isDraftMode, onDraftModelChange, onDraftThinkingLevelChange, onMetaUpdate, threadPath],
   );
 
   const toggleStarMutation = useMutation({
@@ -173,11 +209,18 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
   });
 
   const cycleThinking = useCallback(async () => {
-    if (!threadPath || !supportsThinking || thinkingPending) return;
+    if (!supportsThinking || thinkingPending) return;
 
     const currentIndex = availableLevels.indexOf(currentThinking);
     const nextIndex = (currentIndex + 1) % availableLevels.length;
-    const nextLevel = availableLevels[nextIndex];
+    const nextLevel = availableLevels[nextIndex] as AgentThreadMetaState["thinkingLevel"];
+
+    if (isDraftMode) {
+      onDraftThinkingLevelChange?.(nextLevel);
+      return;
+    }
+
+    if (!threadPath) return;
 
     setThinkingPending(true);
     try {
@@ -191,17 +234,29 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
     } finally {
       setThinkingPending(false);
     }
-  }, [threadPath, supportsThinking, thinkingPending, availableLevels, currentThinking, onMetaUpdate]);
+  }, [
+    availableLevels,
+    currentThinking,
+    isDraftMode,
+    onDraftThinkingLevelChange,
+    onMetaUpdate,
+    supportsThinking,
+    thinkingPending,
+    threadPath,
+  ]);
 
   if (!currentModel && !modelsQuery.data) {
     return null;
   }
 
+  const modelSelectionDisabled = disabled || (isDraftMode && !onDraftModelChange);
+  const thinkingSelectionDisabled = disabled || thinkingPending || (isDraftMode && !onDraftThinkingLevelChange);
+
   return (
     <div className="flex items-center text-xs text-white/50">
       {/* Model combobox */}
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild disabled={disabled}>
+        <PopoverTrigger asChild disabled={modelSelectionDisabled}>
           <button
             type="button"
             className="flex items-center gap-1 rounded px-1.5 py-1 transition-colors hover:bg-white/[0.06] hover:text-white/70 disabled:pointer-events-none disabled:opacity-50"
@@ -300,7 +355,7 @@ export function ModelSelector({ threadPath, meta, onMetaUpdate, disabled }: Mode
         <button
           type="button"
           onClick={() => void cycleThinking()}
-          disabled={disabled || thinkingPending}
+          disabled={thinkingSelectionDisabled}
           className={cn(
             "flex items-center gap-1.5 self-stretch rounded px-1.5 transition-colors hover:bg-white/[0.06] hover:text-white/70 disabled:pointer-events-none disabled:opacity-50",
             currentThinking !== "off" && "text-white/50",
