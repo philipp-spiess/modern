@@ -18,7 +18,7 @@ export function useDiffStyle(): DiffStyle {
 // dockview outside the panel tree) to read and toggle the diff style.
 // ---------------------------------------------------------------------------
 
-const DIFF_STYLE_KEY = "agent:diffStyle";
+export const DIFF_STYLE_KEY = "agent:diffStyle";
 
 let currentStyle: DiffStyle = readFromStorage();
 const listeners = new Set<() => void>();

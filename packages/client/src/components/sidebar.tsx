@@ -103,11 +103,10 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
     }
   };
 
-  const handleOpenDiff = useCallback(async (path: string, state: FileState) => {
-    const mode = state === "staged" ? "staged" : "worktree";
+  const handleOpenDiff = useCallback(async (path: string) => {
     await client.commands.run({
       command: "review.openDiff",
-      args: [path, mode],
+      args: [path],
     });
   }, []);
 
@@ -220,7 +219,7 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
                     kind={file.kind}
                     disabled={stageMutation.isPending || unstageMutation.isPending}
                     onChange={(checked) => handleToggle(file.path, checked)}
-                    onOpenDiff={() => handleOpenDiff(file.path, file.state)}
+                    onOpenDiff={() => handleOpenDiff(file.path)}
                   />
                 </li>
               );

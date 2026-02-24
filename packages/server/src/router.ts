@@ -6,7 +6,16 @@ import { agentRouter } from "./extensions/agent/router";
 import { removeThreadsForWorkspace } from "./extensions/agent/threads";
 import { filesRouter } from "./extensions/files/router";
 import { fileIndex } from "./file-index";
-import { gitStatusSignal, showHead, showStaged, showWorktree, stage, unstage } from "./git";
+import {
+  buildWorkingChangesSnapshot,
+  gitStatusSignal,
+  showHead,
+  showStaged,
+  showWorktree,
+  stage,
+  unstage,
+  type WorkingChangesSnapshot,
+} from "./git";
 import { discoverRecentRepos } from "./recent-repos";
 import { settings, writeSettings } from "./settings";
 import {
@@ -62,6 +71,32 @@ export const gitStatusWatch = os.handler(async function* (): AsyncGenerator<Stat
       }
       lastRev = gitStatusSignal.value.rev;
       yield gitStatusSignal.value.status;
+    }
+  } finally {
+    dispose();
+  }
+});
+
+export const gitWorkingChangesWatch = os.handler(async function* (): AsyncGenerator<WorkingChangesSnapshot> {
+  // Subscribe BEFORE reading initial state to avoid race condition
+  let resolve: ((value: void) => void) | null = null;
+  const dispose = gitStatusSignal.subscribe(() => {
+    resolve?.(undefined);
+  });
+
+  try {
+    let lastRev = gitStatusSignal.value.rev;
+    yield await buildWorkingChangesSnapshot();
+
+    while (true) {
+      // Only wait if no change happened since last yield
+      if (gitStatusSignal.value.rev === lastRev) {
+        await new Promise<void>((r) => {
+          resolve = r;
+        });
+      }
+      lastRev = gitStatusSignal.value.rev;
+      yield await buildWorkingChangesSnapshot();
     }
   } finally {
     dispose();
@@ -365,6 +400,7 @@ export const panelsWatch = os
 type AppRouter = {
   git: {
     statusWatch: typeof gitStatusWatch;
+    workingChangesWatch: typeof gitWorkingChangesWatch;
     stage: typeof gitStage;
     unstage: typeof gitUnstage;
     show: typeof gitShow;
@@ -404,6 +440,7 @@ type AppRouter = {
 export const router: AppRouter = {
   git: {
     statusWatch: gitStatusWatch,
+    workingChangesWatch: gitWorkingChangesWatch,
     stage: gitStage,
     unstage: gitUnstage,
     show: gitShow,

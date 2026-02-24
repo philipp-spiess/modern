@@ -3,9 +3,6 @@ import { createDisposable } from "../../utils/disposable";
 
 export const id = "modern.review";
 
-export type DiffMode = "staged" | "worktree";
-const isDiffMode = (value: unknown): value is DiffMode => value === "staged" || value === "worktree";
-
 export default createExtension(async () => {
   const cwd = modern.workspace.cwd;
   if (!cwd) throw new Error("Workspace cwd is not available.");
@@ -31,12 +28,7 @@ export default createExtension(async () => {
     return { focusPath };
   };
 
-  register("review.openDiff", (arg1?: string, _arg2?: DiffMode) => {
-    if (isDiffMode(arg1)) {
-      return openDiff();
-    }
-    return openDiff(arg1);
-  });
+  register("review.openDiff", (focusPath?: string) => openDiff(focusPath));
 
   register("review.showChanges", () => openDiff(), {
     title: "Show Changes",
