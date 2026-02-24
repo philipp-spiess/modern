@@ -170,17 +170,17 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
         aria-hidden={!hasOpenTabs}
         className={
           hasOpenTabs
-            ? "group relative h-full w-0 shrink-0 select-none cursor-ew-resize"
+            ? "group relative h-full w-0 shrink-0 select-none cursor-col-resize"
             : "pointer-events-none relative h-full w-0 shrink-0 opacity-0"
         }
       >
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-px -translate-x-1/2 rounded bg-white/0 transition-all duration-150 ease-in-out group-hover:w-[3px] group-hover:bg-white/20 group-active:bg-white/20" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-px -translate-x-1/2 rounded bg-gradient-to-b from-transparent via-white/0 to-transparent transition-all duration-150 ease-in-out group-hover:w-[3px] group-hover:via-white/20 group-active:via-white/20" />
         <div
           {...tabsHandleProps}
           role="separator"
           aria-label="Resize workspace tabs"
           aria-orientation="vertical"
-          className="absolute -inset-x-2 inset-y-0 cursor-ew-resize touch-none"
+          className="absolute -inset-x-2 inset-y-0 cursor-col-resize touch-none"
         />
       </div>
 
