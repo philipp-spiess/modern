@@ -251,8 +251,14 @@ async function collectPaths(cwd: string): Promise<string[]> {
   }
 
   const exitCode = await cmd.exited;
+  const stderr = cmd.stderr ? await new Response(cmd.stderr).text() : "";
+
+  if (exitCode === 1 && stderr.trim().length === 0) {
+    // ripgrep returns 1 when no files are discovered.
+    return paths;
+  }
+
   if (exitCode !== 0) {
-    const stderr = cmd.stderr ? await new Response(cmd.stderr).text() : "";
     throw new Error(`ripgrep exited with code ${exitCode}: ${stderr}`);
   }
 

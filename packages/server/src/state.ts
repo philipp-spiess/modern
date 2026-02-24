@@ -470,7 +470,14 @@ export async function openWorkspace(cwd: string) {
     await switchActiveGitWatcher(resolvedCwd);
 
     syncActiveWorkspaceState();
-    void fileIndex.prewarm(resolvedCwd);
+    void fileIndex.prewarm(resolvedCwd).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("does not exist")) {
+        return;
+      }
+
+      console.error(`Failed to prewarm file index for "${resolvedCwd}":`, error);
+    });
   })();
 
   try {
