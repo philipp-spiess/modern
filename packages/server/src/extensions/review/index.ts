@@ -1,10 +1,10 @@
-import path from "node:path";
 import { createExtension, modern } from "../../extension";
 import { createDisposable } from "../../utils/disposable";
 
 export const id = "modern.review";
 
 export type DiffMode = "staged" | "worktree";
+const isDiffMode = (value: unknown): value is DiffMode => value === "staged" || value === "worktree";
 
 export default createExtension(async () => {
   const cwd = modern.workspace.cwd;
@@ -12,7 +12,7 @@ export default createExtension(async () => {
 
   const disposables: Disposable[] = [];
   type PanelHandle = ReturnType<typeof modern.window.createReactPanel>;
-  const diffPanels = new Map<string, PanelHandle>();
+  let diffPanel: PanelHandle | undefined;
 
   const register = <T extends (...args: any[]) => unknown>(
     command: string,
@@ -22,28 +22,29 @@ export default createExtension(async () => {
     disposables.push(modern.commands.registerCommand(command, handler, options));
   };
 
-  const openDiff = (filePath: string, mode: DiffMode) => {
-    const panelKey = `${filePath}:${mode}`;
-    let panel = diffPanels.get(panelKey);
-    if (!panel) {
-      const filename = path.basename(filePath);
-      const title = `${filename} (${mode === "staged" ? "Staged" : "Working Tree"})`;
-      panel = modern.window.createReactPanel("review.diff", "review/diff-view.tsx", title);
-      panel.state = { path: filePath, mode };
-      diffPanels.set(panelKey, panel);
-    } else {
-      panel.state = { path: filePath, mode };
-    }
-    return { path: filePath, mode };
+  const openDiff = (focusPath?: string) => {
+    // Recreate to guarantee exactly one visible "Changes" tab.
+    // If the user closed the previous panel tab, the stale handle cannot re-open itself.
+    diffPanel?.[Symbol.dispose]();
+    diffPanel = modern.window.createReactPanel("review.diff", "review/diff-view.tsx", "Changes");
+    diffPanel.state = { focusPath };
+    return { focusPath };
   };
 
-  register("review.openDiff", (filePath: string, mode: DiffMode) => openDiff(filePath, mode));
+  register("review.openDiff", (arg1?: string, _arg2?: DiffMode) => {
+    if (isDiffMode(arg1)) {
+      return openDiff();
+    }
+    return openDiff(arg1);
+  });
+
+  register("review.showChanges", () => openDiff(), {
+    title: "Show Changes",
+  });
 
   return createDisposable(() => {
-    for (const panel of diffPanels.values()) {
-      panel[Symbol.dispose]();
-    }
-    diffPanels.clear();
+    diffPanel?.[Symbol.dispose]();
+    diffPanel = undefined;
     return [...disposables];
   });
 });
