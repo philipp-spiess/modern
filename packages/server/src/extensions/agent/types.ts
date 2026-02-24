@@ -10,6 +10,15 @@ export interface AgentThreadModelSummary {
   name: string;
 }
 
+export interface AgentThreadContextUsage {
+  /** Estimated context tokens, or null if unknown (e.g. right after compaction). */
+  tokens: number | null;
+  /** Total context window size for the active model. */
+  contextWindow: number;
+  /** Context usage as percentage, or null if tokens is unknown. */
+  percent: number | null;
+}
+
 export interface AgentThreadMetaState {
   isStreaming: boolean;
   steeringQueue: string[];
@@ -20,6 +29,7 @@ export interface AgentThreadMetaState {
   thinkingLevel: AgentThreadThinkingLevel;
   supportsThinking: boolean;
   availableThinkingLevels: string[];
+  contextUsage: AgentThreadContextUsage | null;
 }
 
 export interface AvailableModelInfo {

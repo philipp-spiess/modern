@@ -8,6 +8,7 @@ import type { ExtensionPanelProps } from "../../lib/extensions";
 import { queryClient } from "../../lib/query-client";
 import { client } from "../../lib/rpc";
 import { openWorkspaceWithThread } from "../../lib/workspace";
+import { ContextUsageIndicator } from "./components/context-usage-indicator";
 import { ModelSelector } from "./components/model-selector";
 import {
   Queue,
@@ -422,6 +423,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                   </div>
 
                   <div className="flex items-center gap-1">
+                    <ContextUsageIndicator contextUsage={thread.state?.contextUsage ?? null} />
                     {isStreaming ? (
                       <>
                         <InputGroupButton type="submit" disabled={disabled || !draft.trim()}>

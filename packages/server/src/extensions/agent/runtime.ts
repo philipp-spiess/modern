@@ -8,7 +8,13 @@ import {
   SettingsManager,
   type AgentSession,
 } from "@mariozechner/pi-coding-agent";
-import type { AgentThreadMetaState, AgentThreadModelSummary, AgentThreadViewState, AvailableModelInfo } from "./types";
+import type {
+  AgentThreadContextUsage,
+  AgentThreadMetaState,
+  AgentThreadModelSummary,
+  AgentThreadViewState,
+  AvailableModelInfo,
+} from "./types";
 
 export interface AgentThreadRuntime {
   threadPath: string;
@@ -128,6 +134,11 @@ export function getThreadViewState(runtime: AgentThreadRuntime): AgentThreadView
 export function getThreadMetaState(runtime: AgentThreadRuntime): AgentThreadMetaState {
   const { session } = runtime;
 
+  const rawUsage = session.getContextUsage();
+  const contextUsage: AgentThreadContextUsage | null = rawUsage
+    ? { tokens: rawUsage.tokens, contextWindow: rawUsage.contextWindow, percent: rawUsage.percent }
+    : null;
+
   return {
     isStreaming: session.isStreaming,
     steeringQueue: [...session.getSteeringMessages()],
@@ -138,6 +149,7 @@ export function getThreadMetaState(runtime: AgentThreadRuntime): AgentThreadMeta
     thinkingLevel: session.thinkingLevel,
     supportsThinking: session.supportsThinking(),
     availableThinkingLevels: session.getAvailableThinkingLevels(),
+    contextUsage,
   };
 }
 
