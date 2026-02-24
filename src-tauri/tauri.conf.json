@@ -22,8 +22,8 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "trafficLightPosition": {
-          "x": 18,
-          "y": 25
+          "x": 20,
+          "y": 30
         },
         "dragDropEnabled": false
       }
@@ -56,6 +56,19 @@
           "identifier": "menu",
           "windows": ["*"],
           "permissions": ["core:menu:default"]
+        },
+        {
+          "identifier": "webview-window",
+          "windows": ["*"],
+          "permissions": [
+            "core:webview:allow-create-webview-window",
+            "core:webview:allow-set-webview-size",
+            "core:window:allow-set-title",
+            "core:window:allow-set-fullscreen",
+            "core:window:allow-close",
+            "core:window:allow-set-size",
+            "core:window:allow-center"
+          ]
         }
       ]
     }
