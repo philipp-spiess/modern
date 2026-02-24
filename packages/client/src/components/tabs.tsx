@@ -165,6 +165,7 @@ function removeTab(tabs: TabsType, tabId: string): TabsType {
 }
 
 function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const [tabsData, setTabsData] = useState<TabsType>(emptyTabs);
   const [panelsData, setPanelsData] = useState<Panel[]>(emptyPanels);
@@ -214,15 +215,19 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
     onHasOpenTabsChange?.(hasOpenTabs);
   }, [hasOpenTabs, onHasOpenTabsChange]);
 
-  const closeAllTabsLocally = useCallback(() => {
+  const closeActiveTabLocally = useCallback(() => {
     const api = apiRef.current;
     if (!api) {
-      return;
+      return false;
     }
 
-    [...api.panels].forEach((panel) => {
-      panel.api.close();
-    });
+    const activePanel = api.activePanel;
+    if (!activePanel) {
+      return false;
+    }
+
+    activePanel.api.close();
+    return true;
   }, []);
 
   useLayoutEffect(() => {
@@ -303,18 +308,25 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
 
     const window = getCurrentWindow();
 
-    const unlistenPromise = window.onCloseRequested(() => {
+    const unlistenPromise = window.onCloseRequested((event) => {
       if (!hasOpenTabs) return;
-      closeAllTabsLocally();
+
+      // If focus is inside the tabs pane, close only the active tab.
+      // Otherwise, let the window close proceed normally.
+      const tabsContainer = containerRef.current;
+      if (tabsContainer && tabsContainer.contains(document.activeElement)) {
+        event.preventDefault();
+        closeActiveTabLocally();
+      }
     });
 
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [active, closeAllTabsLocally, hasOpenTabs]);
+  }, [active, closeActiveTabLocally, hasOpenTabs]);
 
   return (
-    <div className="relative flex size-full">
+    <div ref={containerRef} className="relative flex size-full">
       <DockviewReact
         theme={theme}
         components={components}
