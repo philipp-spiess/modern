@@ -344,7 +344,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
           </div>
         )}
 
-        <div className="relative p-3 pt-0">
+        <div className="relative p-2 pt-0">
           {!isAtBottom && (
             <div className="pointer-events-none absolute inset-x-0 -top-10 z-10 flex justify-center">
               <button
@@ -371,6 +371,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
               }}
             >
               <InputGroup
+                style={{ borderRadius: 8 }}
                 className={cn(
                   "border-0 inset-ring inset-ring-white/12 bg-white/[0.03]",
                   isStreaming && "inset-ring-white/20",
