@@ -214,36 +214,16 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
     onHasOpenTabsChange?.(hasOpenTabs);
   }, [hasOpenTabs, onHasOpenTabsChange]);
 
-  const getFallbackTabId = useCallback(() => {
-    for (const group of tabsData.groups) {
-      const first = group.tabs[0];
-      if (first) return first.id;
-    }
-    return null;
-  }, [tabsData]);
-
-  const getActiveTabId = useCallback(() => {
-    const api = apiRef.current as any;
-    const activePanel = api?.activePanel ?? api?.activeGroup?.activePanel;
-    return activePanel?.id ?? activePanel?.panel?.id ?? null;
-  }, []);
-
-  const closeTabLocally = useCallback((tabId: string) => {
+  const closeAllTabsLocally = useCallback(() => {
     const api = apiRef.current;
-    const panel = api?.getPanel(tabId);
-    if (!panel) {
-      return false;
+    if (!api) {
+      return;
     }
 
-    panel.api.close();
-    return true;
+    [...api.panels].forEach((panel) => {
+      panel.api.close();
+    });
   }, []);
-
-  const closeActiveTab = useCallback(() => {
-    const tabId = getActiveTabId();
-    if (!tabId) return false;
-    return closeTabLocally(tabId);
-  }, [closeTabLocally, getActiveTabId]);
 
   useLayoutEffect(() => {
     const api = apiRef.current;
@@ -323,26 +303,15 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
 
     const window = getCurrentWindow();
 
-    const unlistenPromise = window.onCloseRequested((event) => {
+    const unlistenPromise = window.onCloseRequested(() => {
       if (!hasOpenTabs) return;
-
-      const closedActive = closeActiveTab();
-      if (closedActive) {
-        event.preventDefault();
-        return;
-      }
-
-      const fallbackTabId = getFallbackTabId();
-      if (fallbackTabId) {
-        event.preventDefault();
-        closeTabLocally(fallbackTabId);
-      }
+      closeAllTabsLocally();
     });
 
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [active, closeActiveTab, closeTabLocally, getFallbackTabId, hasOpenTabs]);
+  }, [active, closeAllTabsLocally, hasOpenTabs]);
 
   return (
     <div className="relative flex size-full">
