@@ -1,4 +1,5 @@
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupButton } from "@/components/ui/input-group";
+import { RichInput, type RichInputHandle } from "@/components/ui/rich-input";
 import { cn } from "@/lib/utils";
 import type { AgentThreadDeliveryMode, AgentThreadMetaState } from "@moderndev/server/src/extensions/agent/types";
 import { useMutation } from "@tanstack/react-query";
@@ -191,7 +192,8 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   const threadPath = state.threadPath;
   const isDraftThread = state.mode === "draft" || !threadPath;
 
-  const [draft, setDraft] = useState("");
+  const [hasContent, setHasContent] = useState(false);
+  const richInputRef = useRef<RichInputHandle>(null);
   const diffStyle = useDiffStyleStore();
   const thread = useAgentThread(isDraftThread ? undefined : threadPath);
   const scrollToBottomRef = useRef<ScrollToBottomFn | null>(null);
@@ -221,12 +223,13 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
 
   const send = useCallback(
     async (delivery: AgentThreadDeliveryMode) => {
-      const text = draft.trim();
+      const text = richInputRef.current?.getText().trim();
       if (!text) {
         return;
       }
 
-      setDraft("");
+      richInputRef.current?.clear();
+      setHasContent(false);
       scrollToBottomRef.current?.("smooth");
 
       if (isDraftThread) {
@@ -236,18 +239,13 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
 
       await thread.send(text, delivery);
     },
-    [createThreadFromDraftMutation, draft, isDraftThread, thread],
+    [createThreadFromDraftMutation, isDraftThread, thread],
   );
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        void send("auto");
-      }
-    },
-    [send],
-  );
+  const handleEnter = useCallback(() => {
+    void send("auto");
+    return true;
+  }, [send]);
 
   const handleMetaUpdate = useCallback(
     (meta: AgentThreadMetaState) => {
@@ -377,20 +375,22 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                   isStreaming && "inset-ring-white/20",
                 )}
               >
-                <InputGroupTextarea
-                  autoFocus
-                  value={draft}
-                  onChange={(e) => setDraft(e.currentTarget.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={
-                    createThreadFromDraftMutation.isPending
-                      ? "Creating thread…"
-                      : isStreaming
-                        ? "Steer or queue a follow-up…"
-                        : "Send a message…"
-                  }
-                  className="field-sizing-content max-h-36 min-h-10"
-                />
+                <div className="relative w-full flex-1">
+                  <RichInput
+                    ref={richInputRef}
+                    autoFocus
+                    onChange={setHasContent}
+                    onEnter={handleEnter}
+                    placeholder={
+                      createThreadFromDraftMutation.isPending
+                        ? "Creating thread…"
+                        : isStreaming
+                          ? "Steer or queue a follow-up…"
+                          : "Send a message…"
+                    }
+                    className="field-sizing-content max-h-36 min-h-10"
+                  />
+                </div>
                 <InputGroupAddon align="block-end" className="-ml-3 items-center justify-between">
                   <div className="flex items-center gap-1">
                     <ModelSelector
@@ -404,7 +404,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                         <InputGroupButton
                           type="button"
                           onClick={() => void send("steer")}
-                          disabled={disabled || !draft.trim()}
+                          disabled={disabled || !hasContent}
                           className="text-amber-300/70 hover:text-amber-300"
                         >
                           <Compass className="size-3.5" />
@@ -413,7 +413,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                         <InputGroupButton
                           type="button"
                           onClick={() => void send("followUp")}
-                          disabled={disabled || !draft.trim()}
+                          disabled={disabled || !hasContent}
                           className="text-emerald-300/70 hover:text-emerald-300"
                         >
                           <ListPlus className="size-3.5" />
@@ -427,7 +427,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                     <ContextUsageIndicator contextUsage={thread.state?.contextUsage ?? null} />
                     {isStreaming ? (
                       <>
-                        <InputGroupButton type="submit" disabled={disabled || !draft.trim()}>
+                        <InputGroupButton type="submit" disabled={disabled || !hasContent}>
                           <Send className="size-3.5" />
                         </InputGroupButton>
                         <InputGroupButton
@@ -445,7 +445,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                         type="submit"
                         variant="default"
                         size="icon-xs"
-                        disabled={disabled || !draft.trim()}
+                        disabled={disabled || !hasContent}
                       >
                         <CornerDownLeft className="size-3" />
                       </InputGroupButton>
