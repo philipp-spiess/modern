@@ -113,6 +113,42 @@ describe("tabs", () => {
       const tabs = state.tabs.value;
       expect(tabs.groups).toHaveLength(0);
     });
+
+    test("also removes the panel from session when tab is closed", () => {
+      const panel: Panel = {
+        id: "panel-1",
+        viewType: "test.view",
+        module: "test.tsx",
+        title: "Test Panel",
+        state: {},
+      };
+
+      attachPanel(workspace, panel);
+      expect(state.panels.value.has("panel-1")).toBe(true);
+
+      closeTab("panel-1");
+
+      expect(state.panels.value.has("panel-1")).toBe(false);
+    });
+  });
+
+  describe("openTab duplicate prevention", () => {
+    test("does not create duplicate tab when panel is already attached", () => {
+      const panel: Panel = {
+        id: "panel-1",
+        viewType: "test.view",
+        module: "test.tsx",
+        title: "Test Panel",
+        state: {},
+      };
+
+      attachPanel(workspace, panel);
+      attachPanel(workspace, panel);
+
+      const tabs = state.tabs.value;
+      expect(tabs.groups).toHaveLength(1);
+      expect(tabs.groups[0].tabs).toHaveLength(1);
+    });
   });
 
   describe("detachPanel", () => {

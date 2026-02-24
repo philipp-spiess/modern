@@ -11,6 +11,7 @@ import { toCodemirrorShortcut, type Binding } from "../../lib/keybindings";
 import { useKeybinding } from "../../lib/keybindings";
 import { type ExtensionPanelProps } from "../../lib/extensions";
 import { client, orpc } from "../../lib/rpc";
+import { usePanelFocus } from "../../lib/tab-focus";
 import modernDarkTheme from "./theme.json";
 
 const highlighterPromise = createHighlighter({
@@ -18,7 +19,7 @@ const highlighterPromise = createHighlighter({
   themes: [modernDarkTheme as any],
 });
 
-export default function FileEditorPanel({ state }: ExtensionPanelProps<{ uri: string }>) {
+export default function FileEditorPanel({ id: panelId, state }: ExtensionPanelProps<{ uri: string }>) {
   const { data } = useSuspenseQuery(
     orpc.files.load.queryOptions({
       queryKey: ["files", "load", state.uri],
@@ -29,9 +30,12 @@ export default function FileEditorPanel({ state }: ExtensionPanelProps<{ uri: st
 
   const editorSettings = useSettings((cfg) => cfg.editor);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const viewRef = useRef<EditorView | null>(null);
   const mtimeRef = useRef(data.mtime);
   const editorBindings = useKeybinding("files.editor") as Binding[];
   const isDirtyRef = useRef(false);
+
+  usePanelFocus(panelId, () => viewRef.current?.focus());
 
   useLayoutEffect(() => {
     let view: EditorView | null = null;
@@ -141,10 +145,12 @@ export default function FileEditorPanel({ state }: ExtensionPanelProps<{ uri: st
         parent: containerRef.current,
       });
 
+      viewRef.current = view;
       view.focus();
     })();
 
     return () => {
+      viewRef.current = null;
       view?.destroy?.();
       disposed = true;
     };

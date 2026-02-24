@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns2, Ro
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { client, orpc } from "../../lib/rpc";
+import { requestFocusPanel } from "../../lib/tab-focus";
 import { setDiffStyle, useDiffStyleStore } from "../agent/diff-style-context";
 import { areSetsEqual, getChangedPaths, getFileStageState, normalizePath, type StatusFile } from "./diff-view.helpers";
 
@@ -277,11 +278,15 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
         return;
       }
 
-      await client.commands.run({
+      const { result } = await client.commands.run({
         command: "files.open",
         args: [`${workspaceCwd}/${path}`],
         cwd: workspaceCwd,
       });
+      const panelId = (result as any)?.panelId;
+      if (panelId) {
+        requestFocusPanel(panelId);
+      }
     },
     [workspaceCwd],
   );

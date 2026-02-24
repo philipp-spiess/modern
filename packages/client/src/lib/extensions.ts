@@ -1,6 +1,7 @@
 import { client } from "./rpc";
 
 export type ExtensionPanelProps<T = object> = {
+  id?: string;
   state: T;
   workspaceCwd?: string;
 };

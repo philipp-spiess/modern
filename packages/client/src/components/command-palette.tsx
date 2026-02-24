@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
+import { requestFocusPanel } from "../lib/tab-focus";
 import { openWorkspace } from "../lib/workspace";
 import { basename, dirname } from "../utils/path";
 
@@ -124,7 +125,11 @@ export default function CommandPalette({ cwd, onShowSplash }: CommandPaletteProp
       let absolutePath = cwd + "/" + path;
       closePalette();
       try {
-        await client.commands.run({ command: "files.open", args: [absolutePath] });
+        const { result } = await client.commands.run({ command: "files.open", args: [absolutePath] });
+        const panelId = (result as any)?.panelId;
+        if (panelId) {
+          requestFocusPanel(panelId);
+        }
       } catch (error) {
         console.error("Failed to open file", error);
       } finally {

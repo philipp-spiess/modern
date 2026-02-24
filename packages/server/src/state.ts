@@ -629,6 +629,13 @@ export function __resetStateForTests() {
 }
 
 function openTab(current: Tabs, panelId: string): Tabs {
+  // Avoid duplicate tabs — if the panel already has a tab, return as-is.
+  for (const group of current.groups) {
+    if (group.tabs.some((tab) => tab.panelId === panelId)) {
+      return current;
+    }
+  }
+
   if (current.groups.length === 0) {
     return {
       groups: [
@@ -673,6 +680,24 @@ export function closeTab(tabId: string, cwd?: string): Tabs {
   const session = getOrCreateWorkspaceSession(targetCwd);
   session.tabs = closeTabInWorkspace(session.tabs, tabId);
 
+  // Also remove the panel — a panel without a tab has no purpose and
+  // would otherwise linger, preventing re-open from creating a fresh tab.
+  const panels = new Map(session.panels);
+  panels.delete(tabId);
+  session.panels = panels;
+
+  // Notify any listener (e.g. the extension Panel instance) so it can
+  // mark itself as disposed and let the owning extension clean up.
+  const callback = panelCloseCallbacks.get(tabId);
+  if (callback) {
+    panelCloseCallbacks.delete(tabId);
+    try {
+      callback();
+    } catch {
+      // Swallow errors from dispose callbacks.
+    }
+  }
+
   if (getActiveWorkspaceCwd() === session.cwd) {
     syncActiveWorkspaceState();
   } else {
@@ -680,6 +705,13 @@ export function closeTab(tabId: string, cwd?: string): Tabs {
   }
 
   return getWorkspaceTabs(targetCwd);
+}
+
+const panelCloseCallbacks = new Map<string, () => void>();
+
+export function onPanelClosed(panelId: string, callback: () => void): Disposable {
+  panelCloseCallbacks.set(panelId, callback);
+  return { [Symbol.dispose]: () => panelCloseCallbacks.delete(panelId) };
 }
 
 export function updatePanel(cwd: string, panel: Panel): void {

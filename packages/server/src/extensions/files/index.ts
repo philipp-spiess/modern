@@ -24,17 +24,27 @@ export default createExtension(async () => {
 
   const openDocument = (file: string) => {
     const uri = URI.file(file);
-    let panel = editorPanels.get(uri.toString());
+    const uriStr = uri.toString();
+    let panel = editorPanels.get(uriStr);
+
+    // If the previous panel was closed (disposed), drop the stale reference
+    // so we create a fresh panel + tab below.
+    if (panel?.disposed) {
+      editorPanels.delete(uriStr);
+      panel = undefined;
+    }
+
     if (!panel) {
       const title = path.basename(uri.fsPath) || "Untitled";
       panel = modern.window.createReactPanel("files.editor", "files/editor.tsx", title);
-      panel.state = { uri: uri.toString() };
-      editorPanels.set(uri.toString(), panel);
+      panel.state = { uri: uriStr };
+      editorPanels.set(uriStr, panel);
     } else {
+      // File is already open — the client will focus via the returned panelId.
       panel.title = path.basename(uri.fsPath) || panel.title;
-      panel.state = { uri: uri.toString() };
+      panel.state = { uri: uriStr };
     }
-    return { uri: uri.toString() };
+    return { uri: uriStr, panelId: panel.id };
   };
 
   register("files.open", (uri: string) => openDocument(uri));

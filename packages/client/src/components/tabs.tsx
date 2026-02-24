@@ -6,6 +6,7 @@ import { Loader2Icon, XIcon } from "lucide-react";
 import { DynamicIcon } from "lucide-react/dynamic";
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { client, orpc } from "../lib/rpc";
+import { focusPanelContent, onFocusPanel } from "../lib/tab-focus";
 
 import "dockview/dist/styles/dockview.css";
 
@@ -215,6 +216,24 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
     onHasOpenTabsChange?.(hasOpenTabs);
   }, [hasOpenTabs, onHasOpenTabsChange]);
 
+  useEffect(() => {
+    if (!active) return;
+    return onFocusPanel((panelId) => {
+      const api = apiRef.current;
+      if (!api) return;
+      const panel = api.getPanel(panelId);
+      if (panel) {
+        panel.api.setActive();
+        focusPanelContent(panelId);
+      }
+    });
+  }, [active]);
+
+  // Track whether the close was initiated while focus was inside the tabs pane.
+  // We capture this *before* calling api.close() because dockview/xterm may blur
+  // the focused element before the onDidRemovePanel callback fires.
+  const closedWithFocusRef = useRef(false);
+
   const closeActiveTabLocally = useCallback(() => {
     const api = apiRef.current;
     if (!api) {
@@ -226,6 +245,7 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
       return false;
     }
 
+    closedWithFocusRef.current = containerRef.current?.contains(document.activeElement) ?? false;
     activePanel.api.close();
     return true;
   }, []);
@@ -291,9 +311,23 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
   const handleReady = (event: DockviewReadyEvent) => {
     apiRef.current = event.api;
     event.api.onDidRemovePanel((e) => {
+      // Use the pre-captured focus flag since dockview/xterm blurs the element
+      // before this callback fires, making a live contains() check unreliable.
+      const hadFocus = closedWithFocusRef.current;
+      closedWithFocusRef.current = false;
+
       setTabsData((current) => removeTab(current, e.id));
       setPanelsData((current) => current.filter((panel) => panel.id !== e.id));
       void client.tabs.close({ tabId: e.id, cwd: workspaceCwd });
+
+      if (hadFocus) {
+        requestAnimationFrame(() => {
+          const nextActive = event.api.activePanel;
+          if (nextActive) {
+            focusPanelContent(nextActive.id);
+          }
+        });
+      }
     });
   };
 

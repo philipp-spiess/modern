@@ -7,6 +7,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { useEffect, useRef, useState } from "react";
 import { commands, type ExtensionPanelProps } from "../../lib/extensions";
 import { useSettings } from "../../lib/settings";
+import { usePanelFocus } from "../../lib/tab-focus";
 import "@xterm/xterm/css/xterm.css";
 
 // Theme colors from theme.json (terminal.* keys)
@@ -50,7 +51,7 @@ interface TerminalPanelState {
   cwd?: string;
 }
 
-export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelProps<TerminalPanelState>) {
+export default function TerminalPanel({ id: panelId, state, workspaceCwd }: ExtensionPanelProps<TerminalPanelState>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -62,6 +63,8 @@ export default function TerminalPanel({ state, workspaceCwd }: ExtensionPanelPro
   const [exitCode, setExitCode] = useState<number | null>(null);
 
   const editorSettings = useSettings((cfg) => cfg.editor);
+
+  usePanelFocus(panelId, () => terminalRef.current?.focus());
 
   useEffect(() => {
     if (!containerRef.current || !layoutRef.current) return;

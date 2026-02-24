@@ -7,6 +7,7 @@ import {
   attachPanel,
   detachPanel,
   getActiveWorkspaceCwd,
+  onPanelClosed,
   registerExtensionCommand,
   state,
   unregisterExtensionCommand,
@@ -46,6 +47,7 @@ interface PanelHandle extends TypedEventEmitter<PanelEvents>, Disposable {
   readonly id: string;
   readonly viewType: string;
   readonly module: string;
+  readonly disposed: boolean;
   title: string;
   icon?: string;
   state: Record<string, unknown>;
@@ -273,6 +275,7 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
   #closeOverlayIcon?: string;
   #disposed = false;
   #remove: (id: string) => void;
+  #closeDisposable: Disposable;
 
   constructor(params: {
     id: string;
@@ -294,6 +297,12 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
     this.#iconColor = params.iconColor;
     this.#remove = params.remove;
 
+    // Listen for external tab closure (e.g. user closing via the UI).
+    this.#closeDisposable = onPanelClosed(this.id, () => {
+      this.#disposed = true;
+      this.#remove(this.id);
+    });
+
     // Attach panel to workspace-scoped state
     attachPanel(this.#cwd, {
       id: this.id,
@@ -304,6 +313,10 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
       icon: this.#icon,
       state: this.#state,
     });
+  }
+
+  get disposed(): boolean {
+    return this.#disposed;
   }
 
   get title(): string {
@@ -369,6 +382,7 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
   [Symbol.dispose](): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#closeDisposable[Symbol.dispose]();
     this.#remove(this.id);
     detachPanel(this.#cwd, this.id);
   }
