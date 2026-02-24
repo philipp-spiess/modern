@@ -18,7 +18,7 @@ import {
   Terminal as TerminalIcon,
   User,
 } from "lucide-react";
-import { Component, type ReactNode, memo } from "react";
+import { Component, type ReactNode, memo, useEffect, useRef } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,6 @@ import { useDiffStyle } from "./diff-style-context";
 
 import { Message, MessageContent, MessageResponse } from "./components/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "./components/reasoning";
-import { Terminal } from "./components/terminal";
 import { Tool, ToolContent, ToolHeader } from "./components/tool";
 
 // ---------------------------------------------------------------------------
@@ -273,10 +272,6 @@ function ToolCallView({ call, result }: { call: ToolCall; result?: ToolResultMes
       );
     case "bash":
       return <BashToolView command={args.command} result={result} status={status} />;
-    case "glob":
-    case "grep":
-    case "list":
-      return <SearchToolView toolName={toolName} args={args} result={result} status={status} />;
     default:
       return <GenericToolView toolName={toolName} args={args} result={result} status={status} />;
   }
@@ -517,8 +512,9 @@ function BashToolView({
   return (
     <Collapsible
       defaultOpen={false}
-      className="group not-prose w-full overflow-hidden rounded-lg border border-white/8 transition-colors hover:border-white/10"
+      className="group not-prose relative w-full rounded-lg border border-white/8 transition-colors hover:border-white/10"
     >
+      {status === "pending" && <BorderBeam />}
       <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.02]">
         <TerminalIcon
           className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
@@ -547,45 +543,6 @@ function BashToolView({
         </div>
       </CollapsibleContent>
     </Collapsible>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Tool: glob/grep/list (AI Elements Tool)
-// ---------------------------------------------------------------------------
-
-function SearchToolView({
-  toolName,
-  args,
-  result,
-  status,
-}: {
-  toolName: string;
-  args: Record<string, unknown>;
-  result?: ToolResultMessage;
-  status: "pending" | "success" | "error";
-}) {
-  const output = getResultText(result);
-  const title =
-    toolName === "grep"
-      ? `grep ${args.pattern ?? ""}`
-      : toolName === "glob"
-        ? `glob ${args.pattern ?? ""}`
-        : `ls ${args.path ?? ""}`;
-
-  return (
-    <Tool defaultOpen={false}>
-      <ToolHeader
-        icon={<FileText className="size-3.5 text-white/40" />}
-        title={truncate(String(title), 80)}
-        status={status}
-      />
-      {output && (
-        <ToolContent>
-          <Terminal output={output} />
-        </ToolContent>
-      )}
-    </Tool>
   );
 }
 
@@ -748,6 +705,79 @@ class DiffErrorBoundary extends Component<{ children: ReactNode; fallback: React
     if (this.state.hasError) return this.props.fallback;
     return this.props.children;
   }
+}
+
+// ---------------------------------------------------------------------------
+// BorderBeam – animated rotating border for streaming state
+// ---------------------------------------------------------------------------
+
+function BorderBeam({ duration = 3, size = 60 }: { duration?: number; size?: number } = {}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const blobRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const blob = blobRef.current;
+    if (!container || !blob) return;
+
+    let frame: number;
+    const start = performance.now();
+
+    function tick(now: number) {
+      const { width: w, height: h } = container!.getBoundingClientRect();
+      const perimeter = 2 * (w + h);
+      const t = (((now - start) / 1000 / duration) % 1) * perimeter;
+
+      let x: number;
+      let y: number;
+      if (t < w) {
+        x = t;
+        y = 0;
+      } else if (t < w + h) {
+        x = w;
+        y = t - w;
+      } else if (t < 2 * w + h) {
+        x = w - (t - w - h);
+        y = h;
+      } else {
+        x = 0;
+        y = h - (t - 2 * w - h);
+      }
+
+      blob!.style.transform = `translate(${x - size / 2}px, ${y - size / 2}px)`;
+      frame = requestAnimationFrame(tick);
+    }
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [duration, size]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="pointer-events-none absolute inset-[-1px] z-10 rounded-[inherit]"
+      style={{
+        border: "1px solid transparent",
+        WebkitMaskImage: "linear-gradient(#fff 0 0), linear-gradient(#fff 0 0)",
+        WebkitMaskClip: "border-box, padding-box",
+        WebkitMaskComposite: "destination-out",
+        maskImage: "linear-gradient(#fff 0 0), linear-gradient(#fff 0 0)",
+        maskClip: "border-box, padding-box",
+        maskComposite: "exclude",
+      }}
+    >
+      <div
+        ref={blobRef}
+        className="absolute left-0 top-0"
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(255,255,255,0.25) 0%, transparent 70%)",
+        }}
+      />
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
