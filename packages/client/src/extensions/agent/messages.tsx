@@ -499,7 +499,7 @@ function ExploreGroupView({ calls, isActive }: { calls: ToolCall[]; isActive: bo
   const parts: string[] = [];
   if (files > 0) parts.push(`${files} ${files === 1 ? "file" : "files"}`);
   if (searches > 0) parts.push(`${searches} ${searches === 1 ? "search" : "searches"}`);
-  const summary = `${isActive ? "Explore" : "Explored"} ${parts.join(", ")}`;
+  const summary = `${isActive ? "Exploring" : "Explored"} ${parts.join(", ")}`;
 
   return (
     <Collapsible className="group/explore not-prose w-full">
@@ -853,7 +853,7 @@ function BashToolView({
   const hasOutput = Boolean(output && output !== "(no output)");
   const explore = Boolean(command && isExploreCommand(command));
   const Icon = explore ? Compass : TerminalIcon;
-  const label = explore ? "Explore" : "Bash";
+  const label = explore ? "Exploring" : "Bash";
 
   return (
     <Collapsible
