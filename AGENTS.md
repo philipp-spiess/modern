@@ -20,6 +20,7 @@ Stick to TypeScript + JSX with 2-space indentation and sorted ES imports. Compon
 ## Extensions Architecture
 
 - **Runtime overview**: `packages/server/src/extension.ts` isolates each extension in `AsyncLocalStorage`, exposing the `diffs` API. `diffs.window.createReactPanel` bootstraps client modules (relative to `packages/client/src`) inside desktop panels, `diffs.commands.registerCommand` bridges command invocations back into the Bun process, and `diffs.workspace.cwd`/`diffs.storage` give extensions scoped filesystem and persistence access.
+- **Extension docs**: see `docs/extensions/README.md` for a single-page guide (setup, API quick reference, and examples). Keep it in sync when changing `packages/server/src/extension.ts` or extension wiring.
 
 ## Testing Guidelines
 
