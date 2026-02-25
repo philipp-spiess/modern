@@ -10,6 +10,7 @@ import { type ThreadSummary, type WorkspaceThreads } from "@moderndev/server/src
 import type { WorkspaceThreadSelection } from "@moderndev/server/src/state";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import {
+  Archive,
   Ellipsis,
   FolderClosedIcon,
   FolderOpenIcon,
@@ -19,31 +20,32 @@ import {
   Trash2,
 } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
+import {
+  activateProject,
+  archiveThread,
+  openProject,
+  openProjectWithNewThread,
+  openProjectWithThread,
+  removeProject,
+  setProjectExpanded,
+} from "../lib/project";
 import { orpc } from "../lib/rpc";
 import { toggleSidebar } from "../lib/sidebar-store";
-import {
-  activateWorkspace,
-  openWorkspace,
-  openWorkspaceWithNewThread,
-  openWorkspaceWithThread,
-  removeWorkspaceWithThreads,
-  setWorkspaceExpanded,
-} from "../lib/workspace";
 import { basename } from "../utils/path";
 
 type SidebarProps = {
   activeCwd: string;
   activeThread: WorkspaceThreadSelection | null;
-  workspaces: readonly string[];
-  expandedByWorkspace: Record<string, boolean>;
+  projects: readonly string[];
+  expandedByProject: Record<string, boolean>;
 };
 
-function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: SidebarProps) {
+function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: SidebarProps) {
   const workspaceThreadsQuery = useSuspenseQuery({
     ...orpc.agent.threadsList.queryOptions({
-      queryKey: ["agent", "threadsList", workspaces.join("|")],
+      queryKey: ["agent", "threadsList", projects.join("|")],
       input: {
-        workspaces: [...workspaces],
+        projects: [...projects],
       },
       context: { cache: true },
     }),
@@ -52,49 +54,56 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
   });
 
   const threadsByWorkspace = useMemo(() => {
-    const groups = (workspaceThreadsQuery.data?.workspaces as WorkspaceThreads[] | undefined) ?? [];
+    const groups = (workspaceThreadsQuery.data?.projects as WorkspaceThreads[] | undefined) ?? [];
     return new Map<string, ThreadSummary[]>(groups.map((group) => [group.cwd, group.threads]));
-  }, [workspaceThreadsQuery.data?.workspaces]);
+  }, [workspaceThreadsQuery.data?.projects]);
 
   const activeThreadPath = activeThread?.kind === "existing" ? activeThread.threadPath : null;
   const isNewThreadActive = activeThread?.kind === "draft";
 
-  const onAddWorkspace = useCallback(async () => {
-    await openWorkspace();
+  const onAddProject = useCallback(async () => {
+    await openProject();
   }, []);
 
-  const onActivateWorkspace = useCallback(
+  const onActivateProject = useCallback(
     async (cwd: string) => {
       if (cwd === activeCwd) {
         return;
       }
-      await activateWorkspace(cwd);
+      await activateProject(cwd);
     },
     [activeCwd],
   );
 
-  const onToggleWorkspaceExpanded = useCallback(
+  const onToggleProjectExpanded = useCallback(
     async (cwd: string) => {
-      const expanded = expandedByWorkspace[cwd] ?? true;
-      await setWorkspaceExpanded(cwd, !expanded);
+      const expanded = expandedByProject[cwd] ?? true;
+      await setProjectExpanded(cwd, !expanded);
     },
-    [expandedByWorkspace],
+    [expandedByProject],
   );
 
   const onOpenThread = useCallback(async (cwd: string, thread: ThreadSummary) => {
-    await openWorkspaceWithThread(cwd, thread.path, thread.title);
+    await openProjectWithThread(cwd, thread.path, thread.title);
   }, []);
 
   const onCreateThread = useCallback(async () => {
-    await openWorkspaceWithNewThread(activeCwd);
+    await openProjectWithNewThread(activeCwd);
   }, [activeCwd]);
 
-  const onCreateThreadForWorkspace = useCallback(async (cwd: string) => {
-    await openWorkspaceWithNewThread(cwd);
+  const onCreateThreadForProject = useCallback(async (cwd: string) => {
+    await openProjectWithNewThread(cwd);
   }, []);
 
-  const onRemoveWorkspace = useCallback(async (cwd: string) => {
-    await removeWorkspaceWithThreads(cwd);
+  const onRemoveProject = useCallback(async (cwd: string) => {
+    await removeProject(cwd);
+  }, []);
+
+  const onArchiveThread = useCallback(async (cwd: string, threadPath: string, isActiveThread: boolean) => {
+    await archiveThread(cwd, threadPath);
+    if (isActiveThread) {
+      await openProjectWithNewThread(cwd);
+    }
   }, []);
 
   return (
@@ -128,29 +137,26 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
           <div className="flex items-center justify-between">
             <h2 className="text-xs text-white/50">Threads</h2>
             <div className="flex items-center gap-0.5">
-              <Button
-                onClick={() => void onAddWorkspace()}
-                variant="ghost"
-                className="-mr-1.25 size-6 p-0 text-white/50"
-              >
+              <Button onClick={() => void onAddProject()} variant="ghost" className="-mr-1.25 size-6 p-0 text-white/50">
                 <FolderPlusIcon className="size-3.5" />
               </Button>
             </div>
           </div>
 
           <ul className="mt-2 flex flex-col w-full">
-            {workspaces.map((cwd) => (
+            {projects.map((cwd) => (
               <WorkspaceItem
                 key={cwd}
                 cwd={cwd}
-                expanded={expandedByWorkspace[cwd] ?? true}
+                expanded={expandedByProject[cwd] ?? true}
                 activeThreadPath={cwd === activeCwd ? activeThreadPath : null}
                 threads={threadsByWorkspace.get(cwd) ?? []}
-                onActivate={onActivateWorkspace}
-                onToggleExpanded={onToggleWorkspaceExpanded}
+                onActivate={onActivateProject}
+                onToggleExpanded={onToggleProjectExpanded}
                 onOpenThread={onOpenThread}
-                onCreateThread={onCreateThreadForWorkspace}
-                onRemoveWorkspace={onRemoveWorkspace}
+                onCreateThread={onCreateThreadForProject}
+                onRemoveWorkspace={onRemoveProject}
+                onArchiveThread={onArchiveThread}
               />
             ))}
           </ul>
@@ -170,6 +176,7 @@ function WorkspaceItem({
   onOpenThread,
   onCreateThread,
   onRemoveWorkspace,
+  onArchiveThread,
 }: {
   cwd: string;
   expanded: boolean;
@@ -180,6 +187,7 @@ function WorkspaceItem({
   onOpenThread: (cwd: string, thread: ThreadSummary) => Promise<void>;
   onCreateThread: (cwd: string) => Promise<void>;
   onRemoveWorkspace: (cwd: string) => Promise<void>;
+  onArchiveThread: (cwd: string, threadPath: string, isActiveThread: boolean) => Promise<void>;
 }) {
   const FolderIcon = expanded ? FolderOpenIcon : FolderClosedIcon;
 
@@ -210,7 +218,7 @@ function WorkspaceItem({
                 <button
                   type="button"
                   className="size-6 rounded-md p-0 text-white/50 outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0 group-hover:text-white/70 hover:text-white/80"
-                  aria-label={`Workspace actions for ${basename(cwd)}`}
+                  aria-label={`Project actions for ${basename(cwd)}`}
                 >
                   <Ellipsis className="mx-auto size-3.5" />
                 </button>
@@ -218,7 +226,7 @@ function WorkspaceItem({
               <DropdownMenuContent align="end" side="bottom">
                 <DropdownMenuItem onSelect={() => void onRemoveWorkspace(cwd)}>
                   <Trash2 className="size-4" />
-                  Remove
+                  Remove Project
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -240,7 +248,7 @@ function WorkspaceItem({
           {threads.map((thread) => {
             const isActiveThread = activeThreadPath === thread.path;
             return (
-              <li key={thread.id}>
+              <li key={thread.id} className="group/thread relative">
                 <button
                   type="button"
                   onClick={() => void onOpenThread(cwd, thread)}
@@ -256,7 +264,19 @@ function WorkspaceItem({
                       <span className="block truncate">{thread.title}</span>
                     )}
                   </span>
-                  <span className="shrink-0 text-xs text-white/35">{formatRelativeAge(thread.updatedAt)}</span>
+                  <span className="shrink-0 text-xs text-white/35 group-hover/thread:opacity-0">
+                    {formatRelativeAge(thread.updatedAt)}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void onArchiveThread(cwd, thread.path, isActiveThread)}
+                  className="absolute top-1/2 right-2.5 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded text-white/35 opacity-0 hover:bg-white/10 hover:text-white/75 group-hover/thread:opacity-100"
+                  aria-label={`Archive thread ${thread.title}`}
+                  title="Archive thread"
+                >
+                  <Archive className="size-3" />
                 </button>
               </li>
             );
@@ -297,12 +317,12 @@ function hashSeed(seed: string): number {
 }
 
 function hasPendingThreadTitles(data: unknown): boolean {
-  const workspaces = (data as { workspaces?: WorkspaceThreads[] } | undefined)?.workspaces;
-  if (!workspaces?.length) {
+  const projects = (data as { projects?: WorkspaceThreads[] } | undefined)?.projects;
+  if (!projects?.length) {
     return false;
   }
 
-  return workspaces.some((workspace) => workspace.threads.some((thread) => thread.isTitleGenerating));
+  return projects.some((project) => project.threads.some((thread) => thread.isTitleGenerating));
 }
 
 function formatRelativeAge(value: string): string {
