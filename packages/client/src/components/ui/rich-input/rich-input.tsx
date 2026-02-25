@@ -255,7 +255,14 @@ function EnterKeyPlugin({ onEnter }: { onEnter: () => boolean }) {
       KEY_ENTER_COMMAND,
       (event: KeyboardEvent | null) => {
         if (event?.shiftKey) return false;
-        return onEnter();
+
+        const handled = onEnter();
+        if (handled) {
+          event?.preventDefault();
+          event?.stopImmediatePropagation();
+        }
+
+        return handled;
       },
       COMMAND_PRIORITY_HIGH,
     );
