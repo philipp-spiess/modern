@@ -72,9 +72,9 @@ export const WorkingIndicator = memo(function WorkingIndicator() {
     const warpPoint = (x: number, y: number, phase: number) => {
       const nx = (x - inset) / gridSize;
       const ny = (y - inset) / gridSize;
-      const flow = phase * 0.9;
-      const pulse = 0.88 + 0.26 * Math.sin(phase * 1.35);
-      const amplitude = 2.2 * pulse;
+      const flow = phase * 0.8;
+      const pulse = 0.92 + 0.14 * Math.sin(phase * 1.2);
+      const amplitude = 1.3 * pulse;
       const cx = nx - 0.5;
       const cy = ny - 0.5;
       const radial = Math.min(1, Math.hypot(cx, cy) / 0.72);
@@ -82,7 +82,7 @@ export const WorkingIndicator = memo(function WorkingIndicator() {
 
       const noiseX = fbm(nx * 2.25 + flow, ny * 2.25 - flow * 0.7) * 2 - 1;
       const noiseY = fbm(nx * 2.25 - flow * 0.55 + 13.7, ny * 2.25 + flow + 7.9) * 2 - 1;
-      const swirlWeight = 0.22 + 0.86 * interiorBoost;
+      const swirlWeight = 0.12 + 0.46 * interiorBoost;
       const swirl = Math.sin((nx + ny + phase * 0.24) * Math.PI * 2) * swirlWeight;
 
       return {
@@ -110,7 +110,7 @@ export const WorkingIndicator = memo(function WorkingIndicator() {
       ctx.lineCap = "butt";
       ctx.lineJoin = "miter";
 
-      const phase = (time - startTime) * 0.0015;
+      const phase = (time - startTime) * 0.0011;
 
       for (let i = 0; i <= gridCells; i++) {
         const x = inset + i * step;
