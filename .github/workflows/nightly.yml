@@ -63,15 +63,18 @@ jobs:
         id: date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: Build and Release
+      - name: Build and Release (arm64 DMG)
         if: steps.check.outputs.skip != 'true'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: nightly-v${{ steps.date.outputs.date }}
           releaseName: "Nightly Build v${{ steps.date.outputs.date }}"
-          body: "Nightly build based on the latest changes."
-          includeUpdaterJson: true
-          draft: false
+          releaseBody: "Nightly build based on the latest changes."
+          releaseDraft: false
           prerelease: true
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          args: --target aarch64-apple-darwin --bundles dmg
+          releaseAssetNamePattern: modern-arm64[ext]
