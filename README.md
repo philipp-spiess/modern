@@ -69,6 +69,6 @@ bun run format
 - **Desktop**: [Tauri 2](https://v2.tauri.app/)
 - **Frontend**: [React 19](https://react.dev/) + [Vite](https://vite.dev/) + [Tailwind CSS 4](https://tailwindcss.com/)
 - **Backend**: [Bun](https://bun.sh/) + [oRPC](https://orpc.unnoq.com/)
-- **AI**: [Pi coding agent](https://github.com/nicolo-ribaudo/pi-coding-agent)
+- **AI**: [Pi coding agent](https://github.com/badlogic/pi-mono)
 - **Editor**: [CodeMirror](https://codemirror.net/) + [Shiki](https://shiki.style/)
-- **Quality**: [oxlint](https://oxc.rs/) + [oxfmt](https://oxc.rs/) + [tsgo](https://github.com/nicolo-ribaudo/tsgo)
+- **Quality**: [oxlint](https://oxc.rs/) + [oxfmt](https://oxc.rs/) + [tsgo](https://github.com/microsoft/typescript-go)
