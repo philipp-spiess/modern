@@ -6,10 +6,11 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useKeybinding } from "../lib/keybindings";
+import { openProject, openProjectWithNewThread } from "../lib/project";
 import { client, orpc } from "../lib/rpc";
+import { restartApp } from "../lib/restart-app";
 import { toggleSidebar, useSidebarVisible } from "../lib/sidebar-store";
 import { useHandle } from "../lib/use-handle";
-import { openProject, openProjectWithNewThread } from "../lib/project";
 import CommandPalette from "./command-palette";
 import Sidebar from "./sidebar";
 import SplashScreen from "./splash-screen";
@@ -85,6 +86,10 @@ function App() {
     }
     if (command === "view.toggleDevTools") {
       void invoke("toggle_devtools");
+      return;
+    }
+    if (command === "app.restart-server") {
+      await restartApp();
       return;
     }
     await client.commands.run({ command });

@@ -82,7 +82,7 @@ export default createExtension(() => {
       () => {
         process.exit(0);
       },
-      { title: "Restart App Server" },
+      { title: "Restart App" },
     ),
   );
 

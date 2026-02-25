@@ -3,9 +3,10 @@ import { ElCommandList, ElCommandPalette, ElDialog, ElDialogPanel } from "@tailw
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeybinding } from "../lib/keybindings";
-import { client, orpc } from "../lib/rpc";
-import { requestFocusPanel } from "../lib/tab-focus";
 import { openProject, openProjectWithNewThread } from "../lib/project";
+import { client, orpc } from "../lib/rpc";
+import { restartApp } from "../lib/restart-app";
+import { requestFocusPanel } from "../lib/tab-focus";
 import { basename, dirname } from "../utils/path";
 
 type CommandPaletteProps = {
@@ -117,6 +118,10 @@ export default function CommandPalette({ cwd, onShowSplash }: CommandPaletteProp
       }
       if (commandId === "view.toggleDevTools") {
         void invoke("toggle_devtools");
+        return;
+      }
+      if (commandId === "app.restart-server") {
+        await restartApp();
         return;
       }
       await client.commands.run({ command: commandId });
