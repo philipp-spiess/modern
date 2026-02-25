@@ -8,23 +8,18 @@ import {
 import { cn } from "@/lib/utils";
 import { type ThreadSummary, type WorkspaceThreads } from "@moderndev/server/src/extensions/agent/threads";
 import type { WorkspaceThreadSelection } from "@moderndev/server/src/state";
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   Ellipsis,
   FolderClosedIcon,
   FolderOpenIcon,
   FolderPlusIcon,
-  GitBranch,
   PanelLeftOpen,
   SquarePen,
   Trash2,
-  type LucideIcon,
-  SquareDot,
-  SquareMinus,
-  SquarePlus,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
-import { client, orpc } from "../lib/rpc";
+import { memo, useCallback, useMemo } from "react";
+import { orpc } from "../lib/rpc";
 import { toggleSidebar } from "../lib/sidebar-store";
 import {
   activateWorkspace,
@@ -34,9 +29,7 @@ import {
   removeWorkspaceWithThreads,
   setWorkspaceExpanded,
 } from "../lib/workspace";
-import { basename, dirname } from "../utils/path";
-
-const noFiles: StatusFile[] = [];
+import { basename } from "../utils/path";
 
 type SidebarProps = {
   activeCwd: string;
@@ -46,13 +39,6 @@ type SidebarProps = {
 };
 
 function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: SidebarProps) {
-  const { data } = useSuspenseQuery(
-    orpc.git.statusWatch.experimental_liveOptions({
-      context: { cache: true },
-      retry: true,
-    }),
-  );
-
   const workspaceThreadsQuery = useSuspenseQuery({
     ...orpc.agent.threadsList.queryOptions({
       queryKey: ["agent", "threadsList", workspaces.join("|")],
@@ -65,8 +51,6 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
     refetchIntervalInBackground: true,
   });
 
-  const files = (data?.files ?? noFiles) as StatusFile[];
-
   const threadsByWorkspace = useMemo(() => {
     const groups = (workspaceThreadsQuery.data?.workspaces as WorkspaceThreads[] | undefined) ?? [];
     return new Map<string, ThreadSummary[]>(groups.map((group) => [group.cwd, group.threads]));
@@ -74,43 +58,6 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
 
   const activeThreadPath = activeThread?.kind === "existing" ? activeThread.threadPath : null;
   const isNewThreadActive = activeThread?.kind === "draft";
-
-  const stageMutation = useMutation(orpc.git.stage.mutationOptions({}));
-  const unstageMutation = useMutation(orpc.git.unstage.mutationOptions({}));
-
-  const orderedFiles = useMemo(() => {
-    const kindRank: Record<ChangeKind, number> = {
-      modified: 0,
-      deleted: 1,
-      added: 2,
-    };
-
-    return files
-      .map((statusFile) => ({
-        ...statusFile,
-        state: getFileState(statusFile),
-        kind: getChangeKind(statusFile),
-      }))
-      .sort((a, b) => {
-        const rankDiff = kindRank[a.kind] - kindRank[b.kind];
-        return rankDiff !== 0 ? rankDiff : a.path.localeCompare(b.path);
-      });
-  }, [files]);
-
-  const handleToggle = (path: string, shouldStage: boolean) => {
-    if (shouldStage) {
-      stageMutation.mutate({ path });
-    } else {
-      unstageMutation.mutate({ path });
-    }
-  };
-
-  const handleOpenDiff = useCallback(async (path: string) => {
-    await client.commands.run({
-      command: "review.openDiff",
-      args: [path],
-    });
-  }, []);
 
   const onAddWorkspace = useCallback(async () => {
     await openWorkspace();
@@ -206,35 +153,6 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
                 onRemoveWorkspace={onRemoveWorkspace}
               />
             ))}
-          </ul>
-        </section>
-
-        <section className="p-1 w-full">
-          <div className="flex items-center gap-1.5">
-            <h2 className="text-xs text-white/60 font-semibold">Changes</h2>
-            {data?.current ? (
-              <span className="inline-flex items-center gap-1 text-xs text-white/45">
-                <GitBranch className="size-3" aria-hidden strokeWidth={1.75} />
-                {data.current}
-              </span>
-            ) : null}
-          </div>
-
-          <ul className="mt-2 flex-1 overflow-y-auto">
-            {orderedFiles.map((file) => {
-              return (
-                <li key={file.path}>
-                  <FileCheckbox
-                    label={file.path}
-                    state={file.state}
-                    kind={file.kind}
-                    disabled={stageMutation.isPending || unstageMutation.isPending}
-                    onChange={(checked) => handleToggle(file.path, checked)}
-                    onOpenDiff={() => handleOpenDiff(file.path)}
-                  />
-                </li>
-              );
-            })}
           </ul>
         </section>
       </div>
@@ -413,118 +331,6 @@ function formatRelativeAge(value: string): string {
   }
 
   return `${Math.max(1, Math.floor(elapsedMs / week))}w`;
-}
-
-type FileState = "staged" | "partial" | "unstaged";
-
-interface StatusFile {
-  path: string;
-  index: string;
-  working_dir: string;
-}
-
-type ChangeKind = "added" | "deleted" | "modified";
-
-const hasChange = (value: string) => value.trim() !== "" && value !== "?";
-
-function getFileState(file: { index: string; working_dir: string }): FileState {
-  const staged = hasChange(file.index);
-  const unstaged = hasChange(file.working_dir);
-
-  if (staged && !unstaged) {
-    return "staged";
-  }
-
-  if (staged && unstaged) {
-    return "partial";
-  }
-
-  return "unstaged";
-}
-
-interface FileCheckboxProps {
-  label: string;
-  state: FileState;
-  kind: ChangeKind;
-  disabled?: boolean;
-  onChange: (checked: boolean) => void;
-  onOpenDiff: () => void;
-}
-
-function FileCheckbox({ label, state, kind, disabled, onChange, onOpenDiff }: FileCheckboxProps) {
-  const checkboxRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (checkboxRef.current && state === "partial") {
-      checkboxRef.current.indeterminate = true;
-    }
-  }, [state]);
-
-  const { Component: IconComponent, wrapperClass } = getIcon(kind);
-
-  return (
-    <div className="flex items-center gap-1 truncate text-xs text-white/60">
-      <input
-        ref={checkboxRef}
-        type="checkbox"
-        checked={state === "staged"}
-        disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.checked)}
-        className="shrink-0"
-      />
-      <button
-        type="button"
-        onClick={onOpenDiff}
-        className="flex items-center gap-1 truncate hover:text-white/80 transition-colors"
-      >
-        <span className={`flex size-5 shrink-0 items-center justify-center ${wrapperClass}`} aria-hidden>
-          <IconComponent className="h-3.5 w-3.5" strokeWidth={2.5} />
-        </span>
-        {basename(label)}
-        <span className="text-xs text-white/40 truncate">{dirname(label)}</span>
-      </button>
-    </div>
-  );
-}
-
-function getChangeKind(file: StatusFile): ChangeKind {
-  const codes = `${file.index}${file.working_dir}`;
-
-  if (codes.includes("D")) {
-    return "deleted";
-  }
-
-  if (codes.includes("A") || codes.includes("?")) {
-    return "added";
-  }
-
-  return "modified";
-}
-
-type IconConfig = {
-  Component: LucideIcon;
-  wrapperClass: string;
-};
-
-function getIcon(kind: ChangeKind): IconConfig {
-  switch (kind) {
-    case "added":
-      return {
-        Component: SquarePlus,
-        wrapperClass: "text-emerald-400",
-      };
-    case "deleted":
-      return {
-        Component: SquareMinus,
-        wrapperClass: "text-rose-400",
-      };
-    case "modified":
-    default:
-      return {
-        Component: SquareDot,
-        wrapperClass: "text-amber-400",
-      };
-  }
 }
 
 export default memo(Sidebar);
