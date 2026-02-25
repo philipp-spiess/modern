@@ -9,6 +9,7 @@ import { fileIndex } from "./file-index";
 import {
   buildWorkingChangesSnapshot,
   gitStatusSignal,
+  restore,
   showHead,
   showStaged,
   showWorktree,
@@ -37,6 +38,8 @@ import {
 export const gitStage = os.input(z.object({ path: z.string() })).handler(({ input }) => stage(input.path));
 
 export const gitUnstage = os.input(z.object({ path: z.string() })).handler(({ input }) => unstage(input.path));
+
+export const gitRestore = os.input(z.object({ path: z.string() })).handler(({ input }) => restore(input.path));
 
 export const gitShow = os
   .input(z.object({ action: z.enum(["head", "staged", "worktree"]), path: z.string() }))
@@ -403,6 +406,7 @@ type AppRouter = {
     workingChangesWatch: typeof gitWorkingChangesWatch;
     stage: typeof gitStage;
     unstage: typeof gitUnstage;
+    restore: typeof gitRestore;
     show: typeof gitShow;
   };
   settings: {
@@ -443,6 +447,7 @@ export const router: AppRouter = {
     workingChangesWatch: gitWorkingChangesWatch,
     stage: gitStage,
     unstage: gitUnstage,
+    restore: gitRestore,
     show: gitShow,
   },
   settings: {

@@ -1,7 +1,7 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff, type FileDiffMetadata, WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns2, Rows3 } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns2, RotateCcw, Rows3 } from "lucide-react";
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { client, orpc } from "../../lib/rpc";
@@ -320,6 +320,12 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
     },
   });
 
+  const { mutateAsync: restoreFile, isPending: isRestoreFilePending } = useMutation({
+    mutationFn: async (path: string) => {
+      await client.git.restore({ path });
+    },
+  });
+
   const handleStageAll = useCallback(() => {
     if (changedPaths.length === 0 || isStagingAll) {
       return;
@@ -344,6 +350,24 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
       });
     },
     [clearOptimisticStageState, setOptimisticStageState, stageFile, unstageFile],
+  );
+
+  const handleRestoreFile = useCallback(
+    (path: string) => {
+      if (isRestoreFilePending) {
+        return;
+      }
+
+      clearOptimisticStageState([path]);
+      void restoreFile(path).catch((error) => {
+        showToast({
+          variant: "error",
+          title: "Could not revert changes",
+          description: error instanceof Error ? error.message : `Failed to restore ${path}.`,
+        });
+      });
+    },
+    [clearOptimisticStageState, isRestoreFilePending, restoreFile],
   );
 
   const { mutate: commitToThread, isPending: isCommitting } = useMutation({
@@ -549,15 +573,27 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
                       <span className="truncate">{change.path}</span>
                     </button>
 
-                    {workspaceCwd ? (
+                    <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => void openFile(change.path)}
-                        className="shrink-0 rounded border border-white/12 px-2 py-0.5 text-[10px] text-white/65 hover:bg-white/8 hover:text-white/90"
+                        onClick={() => handleRestoreFile(change.path)}
+                        disabled={isRestoreFilePending}
+                        title="Revert"
+                        aria-label="Revert"
+                        className="flex items-center justify-center rounded border border-white/12 p-1 text-white/65 hover:bg-white/8 hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Open File
+                        <RotateCcw className="size-3" />
                       </button>
-                    ) : null}
+                      {workspaceCwd ? (
+                        <button
+                          type="button"
+                          onClick={() => void openFile(change.path)}
+                          className="rounded border border-white/12 px-2 py-0.5 text-[10px] text-white/65 hover:bg-white/8 hover:text-white/90"
+                        >
+                          Open File
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
 
                   {isExpanded ? (

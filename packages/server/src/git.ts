@@ -1,6 +1,6 @@
 import { computed, signal } from "@preact/signals-core";
 import { watch, type FSWatcher } from "node:fs";
-import { stat } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import path from "node:path";
 import simpleGit, { type FileStatusResult, type StatusResult } from "simple-git";
 import { getActiveWorkspaceCwd } from "./state";
@@ -66,6 +66,48 @@ export async function stage(path: string) {
 export async function unstage(path: string) {
   await git.value?.reset(["--", path]);
   scheduleRefresh();
+}
+
+export async function restore(filePath: string) {
+  const instance = git.value;
+  const cwd = getActiveWorkspaceCwd();
+  if (!instance || !cwd) {
+    return;
+  }
+
+  const normalizedPath = filePath.replace(/\\/g, "/");
+
+  try {
+    const status = await instance.status(["--", normalizedPath]);
+    const isUntracked =
+      status.not_added.includes(normalizedPath) ||
+      status.files.some((file) => file.path === normalizedPath && `${file.index}${file.working_dir}`.includes("?"));
+
+    if (isUntracked) {
+      await rm(path.join(cwd, normalizedPath), { recursive: true, force: true });
+      return;
+    }
+
+    try {
+      await instance.raw(["restore", "--source=HEAD", "--staged", "--worktree", "--", normalizedPath]);
+    } catch (error) {
+      const hasHead = await instance
+        .raw(["rev-parse", "--verify", "HEAD"])
+        .then(() => true)
+        .catch(() => false);
+
+      if (hasHead) {
+        throw error;
+      }
+
+      // Repositories without HEAD cannot restore against a base commit.
+      await instance.raw(["rm", "--cached", "--ignore-unmatch", "--", normalizedPath]).catch(() => {});
+      await instance.raw(["checkout", "--", normalizedPath]).catch(() => {});
+      await rm(path.join(cwd, normalizedPath), { recursive: true, force: true }).catch(() => {});
+    }
+  } finally {
+    scheduleRefresh();
+  }
 }
 
 export async function showHead(path: string): Promise<string | null> {
