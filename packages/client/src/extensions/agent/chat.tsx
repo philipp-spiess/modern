@@ -1,4 +1,6 @@
+import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon, InputGroupButton } from "@/components/ui/input-group";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RichInput, type RichInputHandle } from "@/components/ui/rich-input";
 import { cn } from "@/lib/utils";
 import type {
@@ -6,13 +8,13 @@ import type {
   AgentThreadMetaState,
   AvailableModelInfo,
 } from "@moderndev/server/src/extensions/agent/types";
-import { useMutation } from "@tanstack/react-query";
-import { ArrowDown, Compass, CornerDownLeft, ListPlus, Loader2, Send, Square } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
+import { ArrowDown, Check, ChevronDown, Compass, CornerDownLeft, ListPlus, Loader2, Send, Square } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { queryClient } from "../../lib/query-client";
-import { client } from "../../lib/rpc";
-import { openWorkspaceWithThread } from "../../lib/workspace";
+import { client, orpc } from "../../lib/rpc";
+import { openProjectWithThread } from "../../lib/project";
 import { ContextUsageIndicator } from "./components/context-usage-indicator";
 import { ModelSelector } from "./components/model-selector";
 import {
@@ -56,6 +58,7 @@ interface DraftPreferences {
   thinkingLevel: AgentThreadMetaState["thinkingLevel"];
   supportsThinking: boolean;
   availableThinkingLevels: string[];
+  workspaceProviderId: string;
 }
 
 function createDefaultDraftPreferences(): DraftPreferences {
@@ -64,6 +67,7 @@ function createDefaultDraftPreferences(): DraftPreferences {
     thinkingLevel: "off",
     supportsThinking: false,
     availableThinkingLevels: ["off"],
+    workspaceProviderId: "",
   };
 }
 
@@ -79,6 +83,7 @@ function readDraftPreferencesFromStorage(): DraftPreferences | null {
       thinkingLevel?: unknown;
       supportsThinking?: unknown;
       availableThinkingLevels?: unknown;
+      workspaceProviderId?: unknown;
     };
     const model = parsed.model;
 
@@ -127,6 +132,7 @@ function readDraftPreferencesFromStorage(): DraftPreferences | null {
       thinkingLevel,
       supportsThinking: parsed.supportsThinking,
       availableThinkingLevels,
+      workspaceProviderId: typeof parsed.workspaceProviderId === "string" ? parsed.workspaceProviderId : "",
     };
   } catch {
     return null;
@@ -314,18 +320,37 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   const isDraftThread = state.mode === "draft" || !threadPath;
 
   const [hasContent, setHasContent] = useState(false);
-  const [draftPreferences, setDraftPreferences] = useState<DraftPreferences>(() => createDefaultDraftPreferences());
-  const [draftPreferencesLoaded, setDraftPreferencesLoaded] = useState(false);
+  const [draftPreferences, setDraftPreferences] = useState<DraftPreferences>(
+    () => readDraftPreferencesFromStorage() ?? createDefaultDraftPreferences(),
+  );
+  const [draftPreferencesLoaded, setDraftPreferencesLoaded] = useState(() =>
+    Boolean(readDraftPreferencesFromStorage()),
+  );
   const richInputRef = useRef<RichInputHandle>(null);
   const diffStyle = useDiffStyleStore();
   const thread = useAgentThread(isDraftThread ? undefined : threadPath);
   const scrollToBottomRef = useRef<ScrollToBottomFn | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [workspaceProviderMenuOpen, setWorkspaceProviderMenuOpen] = useState(false);
   const draftModelMetaRequestId = useRef(0);
   const draftModel = draftPreferences.model;
   const draftThinkingLevel = draftPreferences.thinkingLevel;
   const draftSupportsThinking = draftPreferences.supportsThinking;
   const draftAvailableThinkingLevels = draftPreferences.availableThinkingLevels;
+  const workspaceProviderId = draftPreferences.workspaceProviderId;
+
+  const workspaceProvidersQuery = useSuspenseQuery(
+    orpc.project.workspaceProviders.queryOptions({
+      queryKey: ["project", "workspaceProviders", workspaceCwd ?? ""],
+      input: workspaceCwd ? { cwd: workspaceCwd } : undefined,
+      context: { cache: true },
+    }),
+  );
+
+  const workspaceProviders = useMemo(
+    () => workspaceProvidersQuery.data.providers ?? [],
+    [workspaceProvidersQuery.data],
+  );
 
   useEffect(() => {
     if (!isDraftThread) {
@@ -350,7 +375,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
 
     void (async () => {
       try {
-        const { defaults } = await client.agent.draftDefaults({ cwd: workspaceCwd });
+        const { defaults } = await client.agent.draftDefaults({ projectCwd: workspaceCwd });
         if (cancelled) {
           return;
         }
@@ -360,6 +385,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
           thinkingLevel: defaults.thinkingLevel,
           supportsThinking: defaults.supportsThinking,
           availableThinkingLevels: defaults.availableThinkingLevels,
+          workspaceProviderId: readDraftPreferencesFromStorage()?.workspaceProviderId ?? "",
         };
 
         setDraftPreferences(nextPreferences);
@@ -388,6 +414,16 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   }, [draftPreferences, draftPreferencesLoaded, isDraftThread]);
 
   useEffect(() => {
+    if (!workspaceProviderId) {
+      return;
+    }
+
+    if (!workspaceProviders.some((provider) => provider.id === workspaceProviderId)) {
+      setDraftPreferences((current) => ({ ...current, workspaceProviderId: "" }));
+    }
+  }, [workspaceProviderId, workspaceProviders]);
+
+  useEffect(() => {
     if (isDraftThread || !thread.state?.model) {
       return;
     }
@@ -402,6 +438,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
       thinkingLevel: thread.state.thinkingLevel,
       supportsThinking: thread.state.supportsThinking,
       availableThinkingLevels: thread.state.availableThinkingLevels,
+      workspaceProviderId: readDraftPreferencesFromStorage()?.workspaceProviderId ?? "",
     });
   }, [isDraftThread, thread.state]);
 
@@ -409,16 +446,21 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
     mutationFn: async ({
       text,
       preferences,
+      workspaceProviderId,
     }: {
       text: string;
       preferences: Pick<DraftPreferences, "model" | "thinkingLevel">;
+      workspaceProviderId?: string;
     }) => {
       if (!workspaceCwd) {
-        throw new Error("Cannot create a thread without an active workspace.");
+        throw new Error("Cannot create a thread without an active project.");
       }
 
-      const created = await client.agent.threadCreate({ cwd: workspaceCwd });
-      await openWorkspaceWithThread(workspaceCwd, created.threadPath, "New Thread");
+      const created = await client.agent.threadCreate({
+        projectCwd: workspaceCwd,
+        ...(workspaceProviderId ? { workspaceProviderId } : {}),
+      });
+      await openProjectWithThread(workspaceCwd, created.threadPath, "New Thread");
 
       try {
         await applyDraftPreferencesToThread(created.threadPath, preferences);
@@ -447,17 +489,21 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   const handleDraftModelChange = useCallback(
     (model: AvailableModelInfo | null) => {
       if (!model) {
-        setDraftPreferences(createDefaultDraftPreferences());
+        setDraftPreferences((current) => ({
+          ...createDefaultDraftPreferences(),
+          workspaceProviderId: current.workspaceProviderId,
+        }));
         return;
       }
 
       if (!model.reasoning) {
-        setDraftPreferences({
+        setDraftPreferences((current) => ({
+          ...current,
           model,
           thinkingLevel: "off",
           supportsThinking: false,
           availableThinkingLevels: ["off"],
-        });
+        }));
         return;
       }
 
@@ -477,7 +523,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
       void (async () => {
         try {
           const { defaults } = await client.agent.draftDefaults({
-            cwd: workspaceCwd,
+            projectCwd: workspaceCwd,
             provider: model.provider,
             modelId: model.id,
           });
@@ -528,13 +574,14 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
             model: draftModel,
             thinkingLevel: draftThinkingLevel,
           },
+          workspaceProviderId: workspaceProviderId || undefined,
         });
         return;
       }
 
       await thread.send(text, delivery);
     },
-    [createThreadFromDraftMutation, draftModel, draftThinkingLevel, isDraftThread, thread],
+    [createThreadFromDraftMutation, draftModel, draftThinkingLevel, isDraftThread, thread, workspaceProviderId],
   );
 
   const handleEnter = useCallback(() => {
@@ -702,6 +749,64 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                       onDraftThinkingLevelChange={handleDraftThinkingLevelChange}
                       disabled={createThreadFromDraftMutation.isPending || (isDraftThread && !draftPreferencesLoaded)}
                     />
+                    {isDraftThread ? (
+                      <Popover open={workspaceProviderMenuOpen} onOpenChange={setWorkspaceProviderMenuOpen}>
+                        <PopoverTrigger asChild disabled={createThreadFromDraftMutation.isPending || !workspaceCwd}>
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/70 disabled:pointer-events-none disabled:opacity-50"
+                            aria-label="Workspace provider"
+                          >
+                            <span className="truncate">
+                              {workspaceProviderId
+                                ? (workspaceProviders.find((provider) => provider.id === workspaceProviderId)?.title ??
+                                  "Project workspace")
+                                : "Project workspace"}
+                            </span>
+                            <ChevronDown className="size-3 shrink-0 opacity-50" />
+                          </button>
+                        </PopoverTrigger>
+
+                        <PopoverContent side="top" align="start" className="w-56 p-0">
+                          <Command>
+                            <CommandList>
+                              <CommandGroup>
+                                <CommandItem
+                                  value="project-workspace"
+                                  onSelect={() => {
+                                    setDraftPreferences((current) => ({ ...current, workspaceProviderId: "" }));
+                                    setWorkspaceProviderMenuOpen(false);
+                                  }}
+                                  className="flex items-center gap-2"
+                                >
+                                  <span className="min-w-0 flex-1 truncate">Project workspace</span>
+                                  {!workspaceProviderId && <Check className="size-3.5 text-white/60" />}
+                                </CommandItem>
+                                {workspaceProviders.map((provider) => (
+                                  <CommandItem
+                                    key={provider.id}
+                                    value={provider.title}
+                                    onSelect={() => {
+                                      setDraftPreferences((current) => ({
+                                        ...current,
+                                        workspaceProviderId: provider.id,
+                                      }));
+                                      setWorkspaceProviderMenuOpen(false);
+                                    }}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <span className="min-w-0 flex-1 truncate">{provider.title}</span>
+                                    {workspaceProviderId === provider.id ? (
+                                      <Check className="size-3.5 text-white/60" />
+                                    ) : null}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    ) : null}
                     {isStreaming && (
                       <>
                         <InputGroupButton
