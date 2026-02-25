@@ -71,19 +71,21 @@ function ThreadHeader({
       </span>
 
       <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onShowChanges}
-          className="h-6 shrink-0 gap-1.5 border border-white/12 px-2 text-xs hover:bg-white/8"
-          aria-label={formatSummaryAriaLabel(summary)}
-          title={formatSummaryAriaLabel(summary)}
-        >
-          <GitCompare className="size-3 text-white/45" aria-hidden strokeWidth={1.75} />
-          <span className="font-medium text-emerald-400/80">+{summary.insertions}</span>
-          <span className="font-medium text-rose-400/80">-{summary.deletions}</span>
-        </Button>
+        {summary.filesChanged > 0 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onShowChanges}
+            className="h-6 shrink-0 gap-1.5 border border-white/12 px-2 text-xs hover:bg-white/8"
+            aria-label={formatSummaryAriaLabel(summary)}
+            title={formatSummaryAriaLabel(summary)}
+          >
+            <GitCompare className="size-3 text-white/45" aria-hidden strokeWidth={1.75} />
+            <span className="font-medium text-emerald-400/80">+{summary.insertions}</span>
+            <span className="font-medium text-rose-400/80">-{summary.deletions}</span>
+          </Button>
+        ) : null}
 
         {threadPath && (
           <DropdownMenu>
