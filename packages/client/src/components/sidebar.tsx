@@ -286,7 +286,7 @@ function WorkspaceItem({
             <div className="truncate text-xs">{basename(cwd)}</div>
           </button>
 
-          <div className="-mr-1.25 relative z-10 flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
+          <div className="-mr-1.25 relative z-10 flex shrink-0 items-center opacity-0 group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
