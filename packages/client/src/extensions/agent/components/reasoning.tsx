@@ -3,7 +3,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
-import { BrainIcon, ChevronDownIcon } from "lucide-react";
+import { ChevronRightIcon } from "lucide-react";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { Shimmer } from "./shimmer";
@@ -136,16 +136,20 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center gap-2 text-sm text-white/40 transition-colors hover:text-white/70",
+          "group/thinking flex w-full items-center gap-1.5 text-sm text-white/40 transition-colors hover:text-white/70",
           className,
         )}
         {...props}
       >
         {children ?? (
           <>
-            <BrainIcon className="size-4" />
             {getThinkingMessage(isStreaming, duration)}
-            <ChevronDownIcon className={cn("size-4 transition-transform", isOpen ? "rotate-180" : "rotate-0")} />
+            <ChevronRightIcon
+              className={cn(
+                "size-3 text-white/30 opacity-0 transition-all group-hover/thinking:opacity-100",
+                isOpen && "rotate-90",
+              )}
+            />
           </>
         )}
       </CollapsibleTrigger>

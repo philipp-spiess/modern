@@ -330,7 +330,7 @@ function ThinkingView({ content, isStreaming }: { content: ThinkingContent; isSt
   if (!content.thinking.trim()) return null;
 
   return (
-    <Reasoning isStreaming={isStreaming}>
+    <Reasoning isStreaming={isStreaming} defaultOpen={false}>
       <ReasoningTrigger />
       <ReasoningContent>{content.thinking}</ReasoningContent>
     </Reasoning>
