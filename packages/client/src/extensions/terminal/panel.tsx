@@ -189,7 +189,7 @@ export default function TerminalPanel({ id: panelId, state, workspaceCwd }: Exte
     const titleDisposable = terminal.onTitleChange((title) => {
       if (title && state.terminalId) {
         commands
-          .execute("terminal.setTitle", { terminalId: state.terminalId, title }, { cwd: workspaceCwd })
+          .execute("terminal.setTitle", { terminalId: state.terminalId, title }, { workspaceCwd })
           .catch(console.error);
       }
     });

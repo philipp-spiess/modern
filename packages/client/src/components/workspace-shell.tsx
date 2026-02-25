@@ -150,7 +150,7 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
   const handleShowChanges = useCallback(() => {
     void client.commands.run({
       command: "review.showChanges",
-      cwd: workspaceCwd,
+      workspaceCwd,
     });
   }, [workspaceCwd]);
 

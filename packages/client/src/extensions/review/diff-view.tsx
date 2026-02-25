@@ -7,7 +7,7 @@ import type { ExtensionPanelProps } from "../../lib/extensions";
 import { client, orpc } from "../../lib/rpc";
 import { requestFocusPanel } from "../../lib/tab-focus";
 import { showToast } from "../../lib/toast";
-import { openWorkspaceWithThread } from "../../lib/workspace";
+import { openProjectWithThread } from "../../lib/project";
 import { setDiffStyle, useDiffStyleStore } from "../agent/diff-style-context";
 import {
   areSetsEqual,
@@ -372,10 +372,10 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
 
   const { mutate: commitToThread, isPending: isCommitting } = useMutation({
     mutationFn: async () => {
-      const workspaceState = await client.workspace.cwd();
+      const workspaceState = await client.project.current();
       const cwd = workspaceState.cwd ?? workspaceCwd;
       if (!cwd) {
-        throw new Error("No active workspace available.");
+        throw new Error("No active project available.");
       }
 
       const activeThread = workspaceState.activeThread;
@@ -383,8 +383,8 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
         activeThread?.kind === "existing" && activeThread.threadPath.trim() ? activeThread.threadPath : null;
 
       if (!threadPath) {
-        const created = await client.agent.threadCreate({ cwd });
-        await openWorkspaceWithThread(cwd, created.threadPath, activeThread?.title ?? "New Thread");
+        const created = await client.agent.threadCreate({ projectCwd: cwd });
+        await openProjectWithThread(cwd, created.threadPath, activeThread?.title ?? "New Thread");
         threadPath = created.threadPath;
       }
 
@@ -411,7 +411,7 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
       const { result } = await client.commands.run({
         command: "files.open",
         args: [`${workspaceCwd}/${path}`],
-        cwd: workspaceCwd,
+        workspaceCwd,
       });
       const panelId = (result as any)?.panelId;
       if (panelId) {
