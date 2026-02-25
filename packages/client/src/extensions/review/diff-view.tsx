@@ -7,7 +7,14 @@ import type { ExtensionPanelProps } from "../../lib/extensions";
 import { client, orpc } from "../../lib/rpc";
 import { requestFocusPanel } from "../../lib/tab-focus";
 import { setDiffStyle, useDiffStyleStore } from "../agent/diff-style-context";
-import { areSetsEqual, getChangedPaths, getFileStageState, normalizePath, type StatusFile } from "./diff-view.helpers";
+import {
+  areSetsEqual,
+  getChangedPaths,
+  getFileStageState,
+  normalizePath,
+  type FileStageState,
+  type StatusFile,
+} from "./diff-view.helpers";
 
 interface DiffViewState {
   focusPath?: string;
@@ -234,19 +241,77 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
     setExpandedPaths(() => (allExpanded ? new Set() : new Set(displayedPaths)));
   }, [allExpanded, displayedPaths]);
 
-  const { mutate: stageAll, isPending: isStagingAll } = useMutation({
+  const [optimisticStageByPath, setOptimisticStageByPath] = useState<Map<string, FileStageState>>(() => new Map());
+
+  const setOptimisticStageState = useCallback((paths: readonly string[], stageState: FileStageState) => {
+    if (paths.length === 0) {
+      return;
+    }
+
+    setOptimisticStageByPath((current) => {
+      const next = new Map(current);
+      for (const path of paths) {
+        next.set(path, stageState);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearOptimisticStageState = useCallback((paths: readonly string[]) => {
+    if (paths.length === 0) {
+      return;
+    }
+
+    setOptimisticStageByPath((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+
+      let hasChanges = false;
+      const next = new Map(current);
+      for (const path of paths) {
+        if (next.delete(path)) {
+          hasChanges = true;
+        }
+      }
+
+      return hasChanges ? next : current;
+    });
+  }, []);
+
+  useEffect(() => {
+    setOptimisticStageByPath((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+
+      let hasChanges = false;
+      const next = new Map(current);
+      for (const [path, optimisticState] of current) {
+        const actualStageState = getFileStageState(fileByPath.get(path));
+        if (actualStageState === optimisticState) {
+          next.delete(path);
+          hasChanges = true;
+        }
+      }
+
+      return hasChanges ? next : current;
+    });
+  }, [fileByPath]);
+
+  const { mutateAsync: stageAll, isPending: isStagingAll } = useMutation({
     mutationFn: async (paths: string[]) => {
       await Promise.all(paths.map((path) => client.git.stage({ path })));
     },
   });
 
-  const { mutate: stageFile, isPending: isStageFilePending } = useMutation({
+  const { mutateAsync: stageFile, isPending: isStageFilePending } = useMutation({
     mutationFn: async (path: string) => {
       await client.git.stage({ path });
     },
   });
 
-  const { mutate: unstageFile, isPending: isUnstageFilePending } = useMutation({
+  const { mutateAsync: unstageFile, isPending: isUnstageFilePending } = useMutation({
     mutationFn: async (path: string) => {
       await client.git.unstage({ path });
     },
@@ -256,20 +321,26 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
     if (changedPaths.length === 0 || isStagingAll) {
       return;
     }
-    stageAll(changedPaths);
-  }, [changedPaths, isStagingAll, stageAll]);
+
+    setOptimisticStageState(changedPaths, "staged");
+    void stageAll(changedPaths).catch(() => {
+      clearOptimisticStageState(changedPaths);
+    });
+  }, [changedPaths, clearOptimisticStageState, isStagingAll, setOptimisticStageState, stageAll]);
 
   const isStagingMutationPending = isStagingAll || isStageFilePending || isUnstageFilePending;
 
   const handleToggleStage = useCallback(
     (path: string, checked: boolean) => {
-      if (checked) {
-        stageFile(path);
-        return;
-      }
-      unstageFile(path);
+      const nextStageState: FileStageState = checked ? "staged" : "unstaged";
+      setOptimisticStageState([path], nextStageState);
+
+      const mutation = checked ? stageFile(path) : unstageFile(path);
+      void mutation.catch(() => {
+        clearOptimisticStageState([path]);
+      });
     },
-    [stageFile, unstageFile],
+    [clearOptimisticStageState, setOptimisticStageState, stageFile, unstageFile],
   );
 
   const openFile = useCallback(
@@ -298,12 +369,12 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
         const normalized = normalizePath(path);
         return {
           path,
-          stageState: getFileStageState(statusFile),
+          stageState: optimisticStageByPath.get(path) ?? getFileStageState(statusFile),
           stageAvailable: Boolean(statusFile),
           fileDiff: parsedDiff.filesByPath.get(normalized),
         };
       }),
-    [displayedPaths, fileByPath, parsedDiff.filesByPath],
+    [displayedPaths, fileByPath, optimisticStageByPath, parsedDiff.filesByPath],
   );
 
   if (changes.length === 0) {
