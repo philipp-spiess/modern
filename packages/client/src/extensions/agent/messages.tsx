@@ -26,6 +26,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { cn } from "@/lib/utils";
 import { AnsiOutput, containsAnsi } from "./components/ansi-output";
 import { useDiffStyle } from "./diff-style-context";
+import { isExploreCommand } from "./explore-command";
 
 import { Message, MessageContent, MessageResponse } from "./components/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "./components/reasoning";
@@ -681,49 +682,6 @@ function ShellOutputView({ content }: { content: string }) {
 // ---------------------------------------------------------------------------
 // Tool: bash (custom collapsible with syntax-highlighted command & output)
 // ---------------------------------------------------------------------------
-
-const EXPLORE_COMMANDS = new Set([
-  // Search / grep
-  "grep",
-  "egrep",
-  "fgrep",
-  "rg",
-  "ag",
-  "ack",
-  "ast-grep",
-  "sg",
-  // Find files
-  "find",
-  "fd",
-  "locate",
-  // List / tree
-  "ls",
-  "tree",
-  // Read file contents
-  "cat",
-  "bat",
-  "head",
-  "tail",
-  "less",
-  "more",
-  // File info
-  "file",
-  "stat",
-  "wc",
-  "du",
-  "df",
-  // Resolve paths / identify commands
-  "which",
-  "where",
-  "type",
-  "realpath",
-  "readlink",
-]);
-
-function isExploreCommand(command: string): boolean {
-  const firstWord = command.trimStart().split(/[\s|;&]/)[0];
-  return EXPLORE_COMMANDS.has(firstWord);
-}
 
 function isExploreTool(call: ToolCall): boolean {
   if (call.name === "read") return true;
