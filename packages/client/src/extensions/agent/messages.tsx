@@ -12,6 +12,7 @@ import type { AgentThreadMessages, AgentThreadStreamMessage } from "@moderndev/s
 import {
   Compass,
   ChevronDownIcon,
+  ChevronRightIcon,
   FileText,
   GlobeIcon,
   ListPlus,
@@ -28,6 +29,7 @@ import { useDiffStyle } from "./diff-style-context";
 
 import { Message, MessageContent, MessageResponse } from "./components/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "./components/reasoning";
+import { Shimmer } from "./components/shimmer";
 
 // ---------------------------------------------------------------------------
 // Local type definitions for custom pi-coding-agent message types
@@ -220,10 +222,27 @@ function AssistantMessageView({
     }
   }
 
+  // Group consecutive explore-type tool calls (read, web_search, explore bash)
+  type RenderBlock = MergedBlock | { kind: "exploreGroup"; calls: ToolCall[] };
+  const renderBlocks: RenderBlock[] = [];
+
+  for (const item of merged) {
+    if (item.kind === "toolCall" && isExploreTool(item.call)) {
+      const last = renderBlocks[renderBlocks.length - 1];
+      if (last?.kind === "exploreGroup") {
+        last.calls.push(item.call);
+      } else {
+        renderBlocks.push({ kind: "exploreGroup", calls: [item.call] });
+      }
+    } else {
+      renderBlocks.push(item);
+    }
+  }
+
   return (
     <Message from="assistant" className="py-2">
-      <MessageContent>
-        {merged.map((item, i) => {
+      <MessageContent className="w-full!">
+        {renderBlocks.map((item, i) => {
           if (item.kind === "thinking") {
             return <ThinkingView key={i} content={item.content} isStreaming={isStreaming} />;
           }
@@ -232,6 +251,11 @@ function AssistantMessageView({
               <div key={i} className="prose-agent min-w-0">
                 <MessageResponse isAnimating={isStreaming}>{item.text}</MessageResponse>
               </div>
+            );
+          }
+          if (item.kind === "exploreGroup") {
+            return (
+              <ExploreGroupView key={i} calls={item.calls} isActive={isStreaming && i === renderBlocks.length - 1} />
             );
           }
           if (item.kind === "toolCall") {
@@ -287,6 +311,82 @@ function ToolCallView({ call, result }: { call: ToolCall; result?: ToolResultMes
     default:
       return <GenericToolView toolName={toolName} args={args} result={result} status={status} />;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Explore group: collapsed summary of consecutive read/search/explore tools
+// ---------------------------------------------------------------------------
+
+function describeExploreTool(call: ToolCall): string {
+  const args = call.arguments ?? {};
+
+  if (call.name === "read") {
+    const path = String(args.path ?? "file");
+    return `Read ${path.split("/").pop()}`;
+  }
+
+  if (call.name === "web_search") {
+    const queries = args.search_queries as string[] | undefined;
+    if (queries?.length) return `Searched web for "${queries[0]}"`;
+    const objective = args.objective as string | undefined;
+    if (objective) return `Searched web: ${objective}`;
+    return "Web search";
+  }
+
+  // Bash explore – try to extract a nice description for search commands
+  const command = String(args.command ?? "");
+  const trimmed = command.trimStart();
+  const firstWord = trimmed.split(/[\s]/)[0];
+  const searchCmds = new Set(["grep", "egrep", "fgrep", "rg", "ag", "ack", "ast-grep", "sg"]);
+  if (searchCmds.has(firstWord)) {
+    const quotedMatch = command.match(/['"]([^'"]+)['"]/);
+    if (quotedMatch) {
+      const pattern = quotedMatch[1];
+      const afterPattern = command.slice(command.indexOf(quotedMatch[0]) + quotedMatch[0].length).trim();
+      const pathArgs = afterPattern.split(/\s+/).filter((a) => !a.startsWith("-") && a.length > 0);
+      const searchPath = pathArgs[pathArgs.length - 1];
+      return searchPath ? `Searched for ${pattern} in ${searchPath}` : `Searched for ${pattern}`;
+    }
+  }
+  return command;
+}
+
+function ExploreGroupView({ calls, isActive }: { calls: ToolCall[]; isActive: boolean }) {
+  let files = 0;
+  let searches = 0;
+  for (const call of calls) {
+    if (call.name === "read") files++;
+    else searches++;
+  }
+
+  const parts: string[] = [];
+  if (files > 0) parts.push(`${files} ${files === 1 ? "file" : "files"}`);
+  if (searches > 0) parts.push(`${searches} ${searches === 1 ? "search" : "searches"}`);
+  const summary = `Explored ${parts.join(", ")}`;
+
+  return (
+    <Collapsible className="group/explore not-prose w-full">
+      <CollapsibleTrigger className="group/trigger flex w-full items-center gap-1.5 py-1 text-left">
+        {isActive ? (
+          <Shimmer as="span" className="text-sm font-medium">
+            {summary}
+          </Shimmer>
+        ) : (
+          <span className="text-sm font-medium text-white/50">{summary}</span>
+        )}
+        <ChevronRightIcon className="size-3 text-white/30 opacity-0 transition-all group-hover/trigger:opacity-100 group-data-[state=open]/explore:rotate-90" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="flex flex-col">
+          {calls.map((call, i) => (
+            <span key={i} className="text-sm text-white/40">
+              {describeExploreTool(call)}
+            </span>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -623,6 +723,16 @@ const EXPLORE_COMMANDS = new Set([
 function isExploreCommand(command: string): boolean {
   const firstWord = command.trimStart().split(/[\s|;&]/)[0];
   return EXPLORE_COMMANDS.has(firstWord);
+}
+
+function isExploreTool(call: ToolCall): boolean {
+  if (call.name === "read") return true;
+  if (call.name === "web_search") return true;
+  if (call.name === "bash") {
+    const command = call.arguments?.command;
+    return typeof command === "string" && isExploreCommand(command);
+  }
+  return false;
 }
 
 function BashToolView({
