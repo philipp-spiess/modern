@@ -156,7 +156,7 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
         <button
           type="button"
           onClick={() => toggleSidebar()}
-          className="flex size-6 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
+          className="mr-1.75 flex size-6 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
           aria-label="Collapse sidebar"
         >
           <PanelLeftOpen className="size-3.5" />
