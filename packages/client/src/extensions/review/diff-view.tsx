@@ -6,6 +6,8 @@ import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, use
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { client, orpc } from "../../lib/rpc";
 import { requestFocusPanel } from "../../lib/tab-focus";
+import { showToast } from "../../lib/toast";
+import { openWorkspaceWithThread } from "../../lib/workspace";
 import { setDiffStyle, useDiffStyleStore } from "../agent/diff-style-context";
 import {
   areSetsEqual,
@@ -33,6 +35,7 @@ interface WorkingChangesSnapshot {
 
 const noStatusFiles: StatusFile[] = [];
 const noWorkingChangeFiles: WorkingChangeFile[] = [];
+const COMMIT_STAGED_CHANGES_MESSAGE = "Commit all the staged changes";
 
 const WORKER_POOL_OPTIONS = {
   workerFactory: () => new Worker(new URL("@pierre/diffs/worker/worker.js", import.meta.url), { type: "module" }),
@@ -343,6 +346,38 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
     [clearOptimisticStageState, setOptimisticStageState, stageFile, unstageFile],
   );
 
+  const { mutate: commitToThread, isPending: isCommitting } = useMutation({
+    mutationFn: async () => {
+      const workspaceState = await client.workspace.cwd();
+      const cwd = workspaceState.cwd ?? workspaceCwd;
+      if (!cwd) {
+        throw new Error("No active workspace available.");
+      }
+
+      const activeThread = workspaceState.activeThread;
+      let threadPath =
+        activeThread?.kind === "existing" && activeThread.threadPath.trim() ? activeThread.threadPath : null;
+
+      if (!threadPath) {
+        const created = await client.agent.threadCreate({ cwd });
+        await openWorkspaceWithThread(cwd, created.threadPath, activeThread?.title ?? "New Thread");
+        threadPath = created.threadPath;
+      }
+
+      await client.agent.threadSend({
+        threadPath,
+        text: COMMIT_STAGED_CHANGES_MESSAGE,
+      });
+    },
+    onError: (error) => {
+      showToast({
+        variant: "error",
+        title: "Could not update thread",
+        description: error instanceof Error ? error.message : "Failed to send commit request.",
+      });
+    },
+  });
+
   const openFile = useCallback(
     async (path: string) => {
       if (!workspaceCwd) {
@@ -376,6 +411,8 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
       }),
     [displayedPaths, fileByPath, optimisticStageByPath, parsedDiff.filesByPath],
   );
+
+  const hasStagedChanges = changes.some((change) => change.stageState === "staged" || change.stageState === "partial");
 
   if (changes.length === 0) {
     return <div className="flex size-full items-center justify-center text-sm text-white/45">No changes.</div>;
@@ -434,12 +471,11 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
             </button>
             <button
               type="button"
-              onClick={() => {
-                // TODO: implement commit flow.
-              }}
-              className="rounded border border-white/12 px-2 py-1 text-xs text-white/70 hover:bg-white/8 hover:text-white"
+              onClick={() => commitToThread()}
+              disabled={!hasStagedChanges || isCommitting}
+              className="rounded border border-white/12 px-2 py-1 text-xs text-white/70 hover:bg-white/8 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Commit
+              {isCommitting ? "Committing..." : "Commit"}
             </button>
           </div>
         </div>
