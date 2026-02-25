@@ -328,6 +328,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
     Boolean(readDraftPreferencesFromStorage()),
   );
   const richInputRef = useRef<RichInputHandle>(null);
+  const threadViewRef = useRef<HTMLDivElement>(null);
   const diffStyle = useDiffStyleStore();
   const thread = useAgentThread(isDraftThread ? undefined : threadPath);
   const scrollToBottomRef = useRef<ScrollToBottomFn | null>(null);
@@ -480,12 +481,46 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
   });
 
   const isStreaming = !isDraftThread && Boolean(thread.state?.isStreaming);
+  const canAbortTurnWithEscape = !isDraftThread && (isStreaming || thread.isSending) && !thread.isAborting;
   const disabled =
     thread.isSending ||
     thread.isAborting ||
     createThreadFromDraftMutation.isPending ||
     (isDraftThread && !draftPreferencesLoaded) ||
     (!isDraftThread && !threadPath);
+
+  useEffect(() => {
+    if (!canAbortTurnWithEscape) {
+      return;
+    }
+
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing || event.repeat) {
+        return;
+      }
+
+      const container = threadViewRef.current;
+      if (!container) {
+        return;
+      }
+
+      const target = event.target;
+      const activeElement = document.activeElement;
+      const targetInThreadView = target instanceof Node && container.contains(target);
+      const focusInThreadView = activeElement instanceof Node && container.contains(activeElement);
+
+      if (!targetInThreadView && !focusInThreadView) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      void thread.abort();
+    };
+
+    window.addEventListener("keydown", handleWindowKeyDown, true);
+    return () => window.removeEventListener("keydown", handleWindowKeyDown, true);
+  }, [canAbortTurnWithEscape, thread]);
 
   const handleDraftModelChange = useCallback(
     (model: AvailableModelInfo | null) => {
@@ -604,7 +639,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
 
   return (
     <DiffStyleContext.Provider value={diffStyle}>
-      <div className="relative flex size-full flex-col">
+      <div ref={threadViewRef} className="relative flex size-full flex-col">
         {error && (
           <div className="mx-3 mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
             {error.message}
