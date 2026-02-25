@@ -632,6 +632,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
                 messages={thread.state.messages}
                 streamMessage={thread.state.streamMessage}
                 isStreaming={isStreaming}
+                showThinkingPlaceholder={thread.state.supportsThinking && thread.state.thinkingLevel !== "off"}
               />
               <SteeringQueueIndicator items={steeringQueue} />
               <FollowUpQueueIndicator items={followUpQueue} />

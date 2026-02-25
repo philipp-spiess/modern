@@ -20,7 +20,7 @@ import {
   Terminal as TerminalIcon,
   WrenchIcon,
 } from "lucide-react";
-import { Component, type ReactNode, memo, useCallback, useEffect, useRef } from "react";
+import { Component, type ClipboardEvent, type ReactNode, memo, useCallback, useEffect, useRef } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -75,10 +75,12 @@ export const MessageList = memo(function MessageList({
   messages,
   streamMessage,
   isStreaming,
+  showThinkingPlaceholder,
 }: {
   messages: AgentThreadMessages;
   streamMessage: AgentThreadStreamMessage;
   isStreaming: boolean;
+  showThinkingPlaceholder: boolean;
 }) {
   const resultMap = new Map<string, ToolResultMessage>();
   for (const msg of messages) {
@@ -122,6 +124,19 @@ export const MessageList = memo(function MessageList({
     }
   }
 
+  const lastEntryIsExploreGroup = entries[entries.length - 1]?.kind === "exploreGroup";
+  const shouldHideStreamAssistantWhileExploreTail =
+    !streamConsumed &&
+    lastEntryIsExploreGroup &&
+    streamMessage?.role === "assistant" &&
+    !hasVisibleAssistantNonThinkingContent(streamMessage as AssistantMessage);
+  const shouldShowThinkingPlaceholder =
+    isStreaming && showThinkingPlaceholder && !streamMessage && !lastEntryIsExploreGroup;
+  const keepExploreTailActiveWhileStreaming =
+    isStreaming &&
+    lastEntryIsExploreGroup &&
+    (streamConsumed || shouldHideStreamAssistantWhileExploreTail || !streamMessage);
+
   return (
     <WorkerPoolContextProvider
       poolOptions={{
@@ -140,17 +155,28 @@ export const MessageList = memo(function MessageList({
             <ExploreGroupView
               key={i}
               calls={entry.calls}
-              isActive={isStreaming && streamConsumed && i === entries.length - 1}
+              isActive={keepExploreTailActiveWhileStreaming && i === entries.length - 1}
             />
           ) : (
             <div key={i} className="content-visibility-auto">
-              <MessageView message={entry.message} resultMap={resultMap} isStreamingMsg={false} />
+              <MessageView
+                message={entry.message}
+                resultMap={resultMap}
+                isStreamingMsg={false}
+                showThinkingPlaceholder={false}
+              />
             </div>
           ),
         )}
-        {streamMessage && !streamConsumed && (
-          <MessageView message={streamMessage} resultMap={resultMap} isStreamingMsg={isStreaming} />
+        {streamMessage && !streamConsumed && !shouldHideStreamAssistantWhileExploreTail && (
+          <MessageView
+            message={streamMessage}
+            resultMap={resultMap}
+            isStreamingMsg={isStreaming}
+            showThinkingPlaceholder={showThinkingPlaceholder}
+          />
         )}
+        {shouldShowThinkingPlaceholder && <ThinkingPlaceholderView />}
       </div>
     </WorkerPoolContextProvider>
   );
@@ -164,10 +190,12 @@ function MessageView({
   message,
   resultMap,
   isStreamingMsg,
+  showThinkingPlaceholder,
 }: {
   message: AnyMessage;
   resultMap: ToolResultLookup;
   isStreamingMsg: boolean;
+  showThinkingPlaceholder: boolean;
 }) {
   const msg = message as AnyMessage;
   switch (msg.role) {
@@ -175,7 +203,12 @@ function MessageView({
       return <UserMessageView message={msg as UserMessage} />;
     case "assistant":
       return (
-        <AssistantMessageView message={msg as AssistantMessage} resultMap={resultMap} isStreaming={isStreamingMsg} />
+        <AssistantMessageView
+          message={msg as AssistantMessage}
+          resultMap={resultMap}
+          isStreaming={isStreamingMsg}
+          showThinkingPlaceholder={showThinkingPlaceholder}
+        />
       );
     case "toolResult":
       return null;
@@ -208,10 +241,34 @@ function UserMessageView({ message }: { message: UserMessage }) {
   const images =
     typeof message.content === "string" ? [] : message.content.filter((c): c is ImageContent => c.type === "image");
 
+  const handleCopy = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!event.currentTarget.contains(range.commonAncestorContainer)) {
+      return;
+    }
+
+    const selectedText = selection.toString();
+    const normalizedText = selectedText.replace(/\r?\n$/, "");
+
+    if (selectedText === normalizedText) {
+      return;
+    }
+
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", normalizedText);
+  }, []);
+
   return (
     <Message from="user" className="py-3">
       <MessageContent>
-        <div className="min-w-0 leading-relaxed whitespace-pre-wrap">{text}</div>
+        <div className="min-w-0 leading-relaxed whitespace-pre-wrap" onCopy={handleCopy}>
+          {text}
+        </div>
         {images.length > 0 && (
           <div className="mt-2 flex flex-col gap-2">
             {images.map((img, i) => (
@@ -237,10 +294,12 @@ function AssistantMessageView({
   message,
   resultMap,
   isStreaming,
+  showThinkingPlaceholder,
 }: {
   message: AssistantMessage;
   resultMap: ToolResultLookup;
   isStreaming: boolean;
+  showThinkingPlaceholder: boolean;
 }) {
   const blocks = message.content;
 
@@ -289,10 +348,17 @@ function AssistantMessageView({
   }
 
   const hasExploreGroup = renderBlocks.some((b) => b.kind === "exploreGroup");
+  const hasThinkingContent = merged.some((b) => b.kind === "thinking" && b.content.thinking.trim().length > 0);
+  const hasVisibleNonThinkingContent = merged.some(
+    (b) => (b.kind === "text" && b.text.trim().length > 0) || b.kind === "toolCall",
+  );
+  const shouldRenderThinkingPlaceholder =
+    isStreaming && showThinkingPlaceholder && !hasThinkingContent && !hasVisibleNonThinkingContent;
 
   return (
     <Message from="assistant" className="py-2">
       <MessageContent className={hasExploreGroup ? "w-full!" : undefined}>
+        {shouldRenderThinkingPlaceholder && <InlineThinkingPlaceholder />}
         {renderBlocks.map((item, i) => {
           if (item.kind === "thinking") {
             const isLastBlock = isStreaming && i === renderBlocks.length - 1;
@@ -334,6 +400,24 @@ function ThinkingView({ content, isStreaming }: { content: ThinkingContent; isSt
       <ReasoningTrigger />
       <ReasoningContent>{content.thinking}</ReasoningContent>
     </Reasoning>
+  );
+}
+
+function InlineThinkingPlaceholder() {
+  return (
+    <Reasoning isStreaming defaultOpen={false}>
+      <ReasoningTrigger />
+    </Reasoning>
+  );
+}
+
+function ThinkingPlaceholderView() {
+  return (
+    <Message from="assistant" className="py-2">
+      <MessageContent>
+        <InlineThinkingPlaceholder />
+      </MessageContent>
+    </Message>
   );
 }
 
@@ -415,7 +499,7 @@ function ExploreGroupView({ calls, isActive }: { calls: ToolCall[]; isActive: bo
   const parts: string[] = [];
   if (files > 0) parts.push(`${files} ${files === 1 ? "file" : "files"}`);
   if (searches > 0) parts.push(`${searches} ${searches === 1 ? "search" : "searches"}`);
-  const summary = `Explored ${parts.join(", ")}`;
+  const summary = `${isActive ? "Explore" : "Explored"} ${parts.join(", ")}`;
 
   return (
     <Collapsible className="group/explore not-prose w-full">
@@ -750,6 +834,10 @@ function isExploreOnlyAssistant(msg: AssistantMessage): boolean {
   if (toolCalls.length === 0) return false;
   if (!toolCalls.every((c) => isExploreTool(c))) return false;
   return !msg.content.some((b) => b.type === "text" && b.text.trim());
+}
+
+function hasVisibleAssistantNonThinkingContent(msg: AssistantMessage): boolean {
+  return msg.content.some((b) => (b.type === "text" && b.text.trim().length > 0) || b.type === "toolCall");
 }
 
 function BashToolView({
