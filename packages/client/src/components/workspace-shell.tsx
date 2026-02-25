@@ -62,7 +62,7 @@ function ThreadHeader({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="-mr-2 flex size-7 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/5 hover:text-white/70"
+              className="-mr-2 flex size-7 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/5 hover:text-white/70 outline-hidden ring-0 focus:outline-hidden focus:ring-0 focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:outline-hidden data-[state=open]:ring-0"
             >
               <Ellipsis className="size-4" />
             </button>
