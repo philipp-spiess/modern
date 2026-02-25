@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
 import { requestFocusPanel } from "../lib/tab-focus";
-import { openWorkspace, openWorkspaceWithNewThread } from "../lib/workspace";
+import { openProject, openProjectWithNewThread } from "../lib/project";
 import { basename, dirname } from "../utils/path";
 
 type CommandPaletteProps = {
@@ -104,11 +104,11 @@ export default function CommandPalette({ cwd, onShowSplash }: CommandPaletteProp
     async (commandId: string) => {
       closePalette();
       if (commandId === "files.openWorkspace") {
-        await openWorkspace();
+        await openProject();
         return;
       }
-      if (commandId === "workspace.newThread") {
-        await openWorkspaceWithNewThread(cwd);
+      if (commandId === "project.newThread") {
+        await openProjectWithNewThread(cwd);
         return;
       }
       if (commandId === "view.splash.open") {

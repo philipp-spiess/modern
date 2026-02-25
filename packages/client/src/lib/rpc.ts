@@ -133,19 +133,19 @@ async function performReconnect() {
     disableAutoReconnect();
   }
 
-  // Try to get the current workspace from the server first
-  // If server has a workspace open, use that; otherwise use initial cwd
+  // Try to get the current project from the server first
+  // If server has a project open, use that; otherwise use initial cwd
   try {
-    const serverCwd = await client.workspace.cwd();
-    if (serverCwd?.cwd) {
-      return; // Server already has a workspace open, no need to reopen
+    const serverProject = await client.project.current();
+    if (serverProject?.cwd) {
+      return; // Server already has a project open, no need to reopen
     }
   } catch {
-    // Server might not be ready yet, fall through to open workspace
+    // Server might not be ready yet, fall through to open project
   }
 
   const cwdValue = await cwdPromise;
-  await client.workspace.open({ cwd: cwdValue });
+  await client.project.open({ cwd: cwdValue });
 }
 
 function waitForSocketOpen(socket: ReconnectingWebSocket): Promise<void> {

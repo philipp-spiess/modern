@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FolderIcon, FolderPlusIcon, GlobeIcon, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
 import { orpc } from "../lib/rpc";
-import { openWorkspace } from "../lib/workspace";
+import { openProject } from "../lib/project";
 import { dirname } from "../utils/path";
 
 type SplashScreenProps = {
@@ -22,21 +22,21 @@ function SplashScreen({ onClose }: SplashScreenProps) {
   }, [onClose]);
 
   const handleOpenProject = useCallback(async () => {
-    await openWorkspace();
+    await openProject();
     onClose();
   }, [onClose]);
 
   const handleOpenRepo = useCallback(
     async (repoPath: string) => {
-      await openWorkspace(repoPath);
+      await openProject(repoPath);
       onClose();
     },
     [onClose],
   );
 
   const recentReposQuery = useQuery(
-    orpc.workspace.recentRepos.queryOptions({
-      queryKey: ["workspace", "recentRepos"],
+    orpc.project.recentRepos.queryOptions({
+      queryKey: ["project", "recentRepos"],
       input: { limit: 5 },
     }),
   );

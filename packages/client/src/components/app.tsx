@@ -9,7 +9,7 @@ import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
 import { toggleSidebar, useSidebarVisible } from "../lib/sidebar-store";
 import { useHandle } from "../lib/use-handle";
-import { openWorkspace, openWorkspaceWithNewThread } from "../lib/workspace";
+import { openProject, openProjectWithNewThread } from "../lib/project";
 import CommandPalette from "./command-palette";
 import Sidebar from "./sidebar";
 import SplashScreen from "./splash-screen";
@@ -23,10 +23,10 @@ const setupMenu = async () => {
     if (item instanceof Submenu) {
       if ((await item.text()) === "File") {
         const openWorkspaceMenuItem = await MenuItem.new({
-          text: "Open Workspace…",
+          text: "Open Project…",
           accelerator: "CmdOrCtrl+Shift+O",
           action: () => {
-            void openWorkspace();
+            void openProject();
           },
         });
         await item.prepend(
@@ -54,7 +54,7 @@ function App() {
 
   useEffect(() => {
     const unlisten = listen("open-workspace", () => {
-      void openWorkspace();
+      void openProject();
     });
 
     return () => {
@@ -66,16 +66,16 @@ function App() {
 
   useKeybinding("global", async (command) => {
     if (command === "files.openWorkspace") {
-      await openWorkspace();
+      await openProject();
       return;
     }
     if (command === "view.splash.open") {
       showSplash();
       return;
     }
-    if (command === "workspace.newThread") {
+    if (command === "project.newThread") {
       if (cwd) {
-        await openWorkspaceWithNewThread(cwd);
+        await openProjectWithNewThread(cwd);
       }
       return;
     }
@@ -90,19 +90,16 @@ function App() {
     await client.commands.run({ command });
   });
 
-  // Get the current workspace from the server
+  // Get the current project from the server
   const { data: workspaceData } = useSuspenseQuery(
-    orpc.workspace.cwd.queryOptions({
-      queryKey: ["workspace", "cwd"],
+    orpc.project.current.queryOptions({
+      queryKey: ["project", "current"],
     }),
   );
 
   const cwd = workspaceData?.cwd;
-  const workspaces = workspaceData?.workspaces ?? [];
-  const expandedByWorkspace = useMemo(
-    () => workspaceData?.expandedByWorkspace ?? {},
-    [workspaceData?.expandedByWorkspace],
-  );
+  const projects = workspaceData?.projects ?? [];
+  const expandedByProject = useMemo(() => workspaceData?.expandedByProject ?? {}, [workspaceData?.expandedByProject]);
   const activeThread = useMemo(
     () => normalizeWorkspaceThreadSelection(workspaceData?.activeThread ?? null),
     [workspaceData?.activeThread],
@@ -156,8 +153,8 @@ function App() {
             <Sidebar
               activeCwd={cwd}
               activeThread={activeThread}
-              workspaces={workspaces}
-              expandedByWorkspace={expandedByWorkspace}
+              projects={projects}
+              expandedByProject={expandedByProject}
             />
 
             <div className="group relative h-full w-px select-none cursor-col-resize">
