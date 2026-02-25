@@ -48,6 +48,16 @@ export default createExtension(() => {
 
   disposables.push(
     modern.commands.registerCommand(
+      "workspace.newThread",
+      () => {
+        // Implemented in the client
+      },
+      { title: "New Thread", defaultKeybinding: { key: "cmd+n", scope: "global" } },
+    ),
+  );
+
+  disposables.push(
+    modern.commands.registerCommand(
       "view.toggleSidebar",
       () => {
         // Implemented in the client

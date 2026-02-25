@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
 import { requestFocusPanel } from "../lib/tab-focus";
-import { openWorkspace } from "../lib/workspace";
+import { openWorkspace, openWorkspaceWithNewThread } from "../lib/workspace";
 import { basename, dirname } from "../utils/path";
 
 type CommandPaletteProps = {
@@ -107,6 +107,10 @@ export default function CommandPalette({ cwd, onShowSplash }: CommandPaletteProp
         await openWorkspace();
         return;
       }
+      if (commandId === "workspace.newThread") {
+        await openWorkspaceWithNewThread(cwd);
+        return;
+      }
       if (commandId === "view.splash.open") {
         onShowSplash?.();
         return;
@@ -117,7 +121,7 @@ export default function CommandPalette({ cwd, onShowSplash }: CommandPaletteProp
       }
       await client.commands.run({ command: commandId });
     },
-    [closePalette, onShowSplash],
+    [closePalette, cwd, onShowSplash],
   );
 
   const handleOpenFile = useCallback(

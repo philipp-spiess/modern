@@ -9,7 +9,7 @@ import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
 import { toggleSidebar, useSidebarVisible } from "../lib/sidebar-store";
 import { useHandle } from "../lib/use-handle";
-import { openWorkspace } from "../lib/workspace";
+import { openWorkspace, openWorkspaceWithNewThread } from "../lib/workspace";
 import CommandPalette from "./command-palette";
 import Sidebar from "./sidebar";
 import SplashScreen from "./splash-screen";
@@ -71,6 +71,12 @@ function App() {
     }
     if (command === "view.splash.open") {
       showSplash();
+      return;
+    }
+    if (command === "workspace.newThread") {
+      if (cwd) {
+        await openWorkspaceWithNewThread(cwd);
+      }
       return;
     }
     if (command === "view.toggleSidebar") {
