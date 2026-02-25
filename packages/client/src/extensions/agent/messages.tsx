@@ -582,6 +582,49 @@ function ShellOutputView({ content }: { content: string }) {
 // Tool: bash (custom collapsible with syntax-highlighted command & output)
 // ---------------------------------------------------------------------------
 
+const EXPLORE_COMMANDS = new Set([
+  // Search / grep
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "ag",
+  "ack",
+  "ast-grep",
+  "sg",
+  // Find files
+  "find",
+  "fd",
+  "locate",
+  // List / tree
+  "ls",
+  "tree",
+  // Read file contents
+  "cat",
+  "bat",
+  "head",
+  "tail",
+  "less",
+  "more",
+  // File info
+  "file",
+  "stat",
+  "wc",
+  "du",
+  "df",
+  // Resolve paths / identify commands
+  "which",
+  "where",
+  "type",
+  "realpath",
+  "readlink",
+]);
+
+function isExploreCommand(command: string): boolean {
+  const firstWord = command.trimStart().split(/[\s|;&]/)[0];
+  return EXPLORE_COMMANDS.has(firstWord);
+}
+
 function BashToolView({
   command,
   result,
@@ -593,6 +636,9 @@ function BashToolView({
 }) {
   const output = getResultText(result);
   const hasOutput = Boolean(output && output !== "(no output)");
+  const explore = Boolean(command && isExploreCommand(command));
+  const Icon = explore ? Compass : TerminalIcon;
+  const label = explore ? "Explore" : "Bash";
 
   return (
     <Collapsible
@@ -601,10 +647,10 @@ function BashToolView({
     >
       {status === "pending" && <BorderBeam />}
       <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.02]">
-        <TerminalIcon
+        <Icon
           className={cn("size-3.5 shrink-0", status === "pending" ? "animate-pulse text-white/40" : "text-white/50")}
         />
-        <span className="shrink-0 text-xs font-medium text-white/70">Bash</span>
+        <span className="shrink-0 text-xs font-medium text-white/70">{label}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-white/30">{command ?? ""}</span>
         {status === "error" && (
           <span className="shrink-0 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400">

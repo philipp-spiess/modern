@@ -143,7 +143,11 @@ export function normalizeBindings(
   });
 }
 
-export function useKeybinding(scope: string, callback?: (command: string) => void): Binding[] {
+export function useKeybinding(
+  scope: string,
+  callback?: (command: string) => void,
+  shouldHandle?: (binding: Binding, event: KeyboardEvent) => boolean,
+): Binding[] {
   const { data } = useSuspenseQuery(
     orpc.commands.list.experimental_liveOptions({
       context: { cache: true },
@@ -171,7 +175,11 @@ export function useKeybinding(scope: string, callback?: (command: string) => voi
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const activeChord = chordRef.current;
-      if (activeChord && shortcutMatches(activeChord.binding.key, event, activeChord.index)) {
+      if (
+        activeChord &&
+        shortcutMatches(activeChord.binding.key, event, activeChord.index) &&
+        (shouldHandle ? shouldHandle(activeChord.binding, event) : true)
+      ) {
         event.preventDefault();
         const isFinal = activeChord.index >= activeChord.binding.key.keys.length - 1;
         if (isFinal) {
@@ -189,7 +197,7 @@ export function useKeybinding(scope: string, callback?: (command: string) => voi
       }
 
       for (const binding of bindings) {
-        if (shortcutMatches(binding.key, event, 0)) {
+        if (shortcutMatches(binding.key, event, 0) && (shouldHandle ? shouldHandle(binding, event) : true)) {
           event.preventDefault();
           if (binding.key.keys.length === 1) {
             void callback(binding.command);
@@ -208,7 +216,7 @@ export function useKeybinding(scope: string, callback?: (command: string) => voi
       resetChord();
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [bindings, callback]);
+  }, [bindings, callback, shouldHandle]);
 
   return bindings;
 }

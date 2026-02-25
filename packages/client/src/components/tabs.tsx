@@ -1,10 +1,10 @@
 import type { Panel, Tabs as TabsType } from "@moderndev/server/src/state";
 import { useQuery } from "@tanstack/react-query";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockviewReact, type DockviewReadyEvent } from "dockview";
 import { Loader2Icon, XIcon } from "lucide-react";
 import { DynamicIcon } from "lucide-react/dynamic";
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
 import { focusPanelContent, onFocusPanel } from "../lib/tab-focus";
 
@@ -250,6 +250,23 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
     return true;
   }, []);
 
+  const isTabsPaneFocused = useCallback(() => {
+    const tabsContainer = containerRef.current;
+    return tabsContainer ? tabsContainer.contains(document.activeElement) : false;
+  }, []);
+
+  useKeybinding(
+    "view.tabs",
+    active
+      ? (command) => {
+          if (command === "view.tabs.close" && hasOpenTabs) {
+            closeActiveTabLocally();
+          }
+        }
+      : undefined,
+    () => active && hasOpenTabs && isTabsPaneFocused(),
+  );
+
   useLayoutEffect(() => {
     const api = apiRef.current;
     if (!api || !active) return;
@@ -330,34 +347,6 @@ function TabsComponent({ active, workspaceCwd, onHasOpenTabsChange }: TabsProps)
       }
     });
   };
-
-  useEffect(() => {
-    if (!active) {
-      return;
-    }
-
-    // Skip when Tauri APIs are unavailable (e.g., running in plain browser for tests).
-    if ("__TAURI_SYNC_STATUS__" in globalThis && (globalThis as any)["__TAURI_SYNC_STATUS__"].role === "follower")
-      return;
-
-    const window = getCurrentWindow();
-
-    const unlistenPromise = window.onCloseRequested((event) => {
-      if (!hasOpenTabs) return;
-
-      // If focus is inside the tabs pane, close only the active tab.
-      // Otherwise, let the window close proceed normally.
-      const tabsContainer = containerRef.current;
-      if (tabsContainer && tabsContainer.contains(document.activeElement)) {
-        event.preventDefault();
-        closeActiveTabLocally();
-      }
-    });
-
-    return () => {
-      void unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, [active, closeActiveTabLocally, hasOpenTabs]);
 
   return (
     <div ref={containerRef} className="relative flex size-full">
