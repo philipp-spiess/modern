@@ -14,6 +14,7 @@ import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import type { ExtensionPanelProps } from "../../lib/extensions";
 import { queryClient } from "../../lib/query-client";
 import { client, orpc } from "../../lib/rpc";
+import { getSyncedSpinStyle } from "../../lib/spinner";
 import { openProjectWithThread } from "../../lib/project";
 import { ContextUsageIndicator } from "./components/context-usage-indicator";
 import { ModelSelector } from "./components/model-selector";
@@ -623,7 +624,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
             </div>
           ) : thread.isLoading ? (
             <div className="flex items-center gap-2 py-8 text-sm text-white/40">
-              <Loader2 className="size-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" style={getSyncedSpinStyle()} />
               Loading thread…
             </div>
           ) : thread.state ? (

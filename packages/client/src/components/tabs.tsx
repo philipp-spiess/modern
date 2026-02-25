@@ -6,6 +6,7 @@ import { DynamicIcon } from "lucide-react/dynamic";
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useKeybinding } from "../lib/keybindings";
 import { client, orpc } from "../lib/rpc";
+import { getSyncedSpinStyle } from "../lib/spinner";
 import { focusPanelContent, onFocusPanel } from "../lib/tab-focus";
 
 import "dockview/dist/styles/dockview.css";
@@ -38,7 +39,7 @@ function loadModule(modulePath: string): any {
 const PanelLoading = () => (
   <div className="flex size-full items-center justify-center">
     <div className="flex items-center gap-2 text-sm text-white/40">
-      <Loader2Icon className="animate-spin size-4" />
+      <Loader2Icon className="animate-spin size-4" style={getSyncedSpinStyle()} />
       <span>Loading…</span>
     </div>
   </div>

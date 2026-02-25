@@ -8,6 +8,9 @@ import {
   SettingsManager,
   type AgentSession,
 } from "@mariozechner/pi-coding-agent";
+import { signal } from "@preact/signals-core";
+import { isThreadActiveInActiveWorkspace } from "../../state";
+import { markThreadUnread } from "./notifications";
 import type {
   AgentDraftDefaults,
   AgentThreadContextUsage,
@@ -20,12 +23,19 @@ import type {
 export interface AgentThreadRuntime {
   threadPath: string;
   session: AgentSession;
+  dispose(): void;
 }
 
 const authStorage = AuthStorage.create();
 const modelRegistry = new ModelRegistry(authStorage);
 const settingsManager = SettingsManager.create();
 const runtimeByThreadPath = new Map<string, Promise<AgentThreadRuntime>>();
+
+export const threadRuntimeActivityRevision = signal(0);
+
+function bumpThreadRuntimeActivityRevision(): void {
+  threadRuntimeActivityRevision.value += 1;
+}
 
 async function disposeThreadRuntime(threadPath: string): Promise<void> {
   const resolvedPath = path.resolve(threadPath);
@@ -38,7 +48,8 @@ async function disposeThreadRuntime(threadPath: string): Promise<void> {
 
   try {
     const runtime = await runtimePromise;
-    runtime.session.dispose();
+    runtime.dispose();
+    bumpThreadRuntimeActivityRevision();
   } catch (error) {
     console.error(`Failed to dispose runtime for thread "${resolvedPath}":`, error);
   }
@@ -62,6 +73,23 @@ export async function getThreadRuntime(threadPath: string): Promise<AgentThreadR
   } catch (error) {
     runtimeByThreadPath.delete(resolvedPath);
     throw error;
+  }
+}
+
+export async function getThreadRuntimeStreamingState(threadPath: string): Promise<boolean> {
+  const resolvedPath = path.resolve(threadPath);
+  const runtimePromise = runtimeByThreadPath.get(resolvedPath);
+
+  if (!runtimePromise) {
+    return false;
+  }
+
+  try {
+    const runtime = await runtimePromise;
+    return runtime.session.isStreaming;
+  } catch {
+    runtimeByThreadPath.delete(resolvedPath);
+    return false;
   }
 }
 
@@ -102,6 +130,15 @@ async function createPersistedThreadRuntime(threadPath: string): Promise<AgentTh
   return createThreadRuntime(resolvedPath, sessionManager);
 }
 
+const SIDEBAR_ACTIVITY_EVENT_TYPES = new Set([
+  "turn_start",
+  "message_start",
+  "message_end",
+  "turn_end",
+  "agent_end",
+  "abort_end",
+]);
+
 async function createThreadRuntime(
   threadPath: string,
   sessionManager: SessionManager,
@@ -115,9 +152,31 @@ async function createThreadRuntime(
     sessionManager,
   });
 
+  const unsubscribe = session.subscribe((event) => {
+    if (SIDEBAR_ACTIVITY_EVENT_TYPES.has(event.type)) {
+      bumpThreadRuntimeActivityRevision();
+    }
+
+    if (event.type !== "agent_end") {
+      return;
+    }
+
+    if (isThreadActiveInActiveWorkspace(threadPath)) {
+      return;
+    }
+
+    void markThreadUnread(threadPath);
+  });
+
+  bumpThreadRuntimeActivityRevision();
+
   return {
     threadPath,
     session,
+    dispose: () => {
+      unsubscribe();
+      session.dispose();
+    },
   };
 }
 

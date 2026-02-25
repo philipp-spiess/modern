@@ -15,6 +15,7 @@ import {
   FolderClosedIcon,
   FolderOpenIcon,
   FolderPlusIcon,
+  LoaderCircle,
   PanelLeftOpen,
   SquarePen,
   Trash2,
@@ -30,6 +31,7 @@ import {
   setProjectExpanded,
 } from "../lib/project";
 import { orpc } from "../lib/rpc";
+import { getSyncedSpinStyle } from "../lib/spinner";
 import { toggleSidebar } from "../lib/sidebar-store";
 import { basename } from "../utils/path";
 
@@ -42,15 +44,14 @@ type SidebarProps = {
 
 function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: SidebarProps) {
   const workspaceThreadsQuery = useSuspenseQuery({
-    ...orpc.agent.threadsList.queryOptions({
-      queryKey: ["agent", "threadsList", projects.join("|")],
+    ...orpc.agent.threadsActivityWatch.experimental_liveOptions({
       input: {
         projects: [...projects],
       },
       context: { cache: true },
+      retry: true,
     }),
-    refetchInterval: (query) => (hasPendingThreadTitles(query.state.data) ? 1_500 : false),
-    refetchIntervalInBackground: true,
+    queryKey: ["agent", "threadsActivityWatch", projects.join("|")],
   });
 
   const threadsByWorkspace = useMemo(() => {
@@ -253,10 +254,18 @@ function WorkspaceItem({
                   type="button"
                   onClick={() => void onOpenThread(cwd, thread)}
                   className={cn(
-                    "flex w-full px-2.5 hover:bg-white/10 items-center text-xs gap-1 rounded-md py-1.5 pl-8 text-left text-white/60 hover:text-white/70",
+                    "relative flex w-full px-2.5 hover:bg-white/10 items-center text-xs gap-1 rounded-md py-1.5 pl-8 text-left text-white/60 hover:text-white/70",
                     isActiveThread && "bg-white/8 text-white/80",
                   )}
                 >
+                  <span className="pointer-events-none absolute inset-y-0 left-0 inline-flex w-8 items-center justify-center">
+                    {thread.isStreaming ? (
+                      <LoaderCircle className="size-3 animate-spin text-white/45" style={getSyncedSpinStyle()} />
+                    ) : thread.hasUnread ? (
+                      <span className="size-2 rounded-full bg-amber-400" />
+                    ) : null}
+                  </span>
+
                   <span className="min-w-0 flex-1">
                     {thread.isTitleGenerating ? (
                       <ThreadTitleShimmer seed={thread.id} />
@@ -314,15 +323,6 @@ function hashSeed(seed: string): number {
   }
 
   return hash;
-}
-
-function hasPendingThreadTitles(data: unknown): boolean {
-  const projects = (data as { projects?: WorkspaceThreads[] } | undefined)?.projects;
-  if (!projects?.length) {
-    return false;
-  }
-
-  return projects.some((project) => project.threads.some((thread) => thread.isTitleGenerating));
 }
 
 function formatRelativeAge(value: string): string {

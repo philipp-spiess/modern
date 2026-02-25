@@ -11,6 +11,7 @@ import viewExtension, { id as viewExtensionId } from "./extensions/view";
 import { fileIndex } from "./file-index";
 import { startGitWatcher } from "./git";
 import { getGlobal, setGlobal, shutdownStorage } from "./storage";
+import { clearThreadUnread } from "./extensions/agent/notifications";
 
 export interface Panel {
   id: string;
@@ -607,12 +608,30 @@ export function getWorkspaceActiveThread(cwd?: string): WorkspaceThreadSelection
   return cloneWorkspaceThreadSelection(session?.activeThread ?? null);
 }
 
+export function isThreadActiveInActiveWorkspace(threadPath: string): boolean {
+  const activeWorkspaceCwd = getActiveWorkspaceCwd();
+  if (!activeWorkspaceCwd) {
+    return false;
+  }
+
+  const session = workspaceSessions.get(activeWorkspaceCwd);
+  if (!session || session.activeThread?.kind !== "existing") {
+    return false;
+  }
+
+  return path.resolve(session.activeThread.threadPath) === path.resolve(threadPath);
+}
+
 export function setWorkspaceActiveThread(
   cwd: string,
   thread: WorkspaceThreadSelection | null,
 ): WorkspaceThreadSelection | null {
   const session = getOrCreateWorkspaceSession(cwd);
   session.activeThread = thread ? normalizeThreadSelection(session.cwd, thread) : null;
+
+  if (session.activeThread?.kind === "existing") {
+    void clearThreadUnread(session.activeThread.threadPath);
+  }
 
   if (getActiveWorkspaceCwd() === session.cwd) {
     syncActiveWorkspaceState();
@@ -678,6 +697,10 @@ export async function openWorkspace(cwd: string) {
 
     const session = getOrCreateWorkspaceSession(resolvedCwd);
     await activateWorkspaceSession(session);
+
+    if (session.activeThread?.kind === "existing") {
+      void clearThreadUnread(session.activeThread.threadPath);
+    }
 
     await switchActiveGitWatcher(resolvedCwd);
 

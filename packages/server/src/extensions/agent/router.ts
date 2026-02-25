@@ -19,7 +19,9 @@ import {
   setEnabledModels,
   setThreadModel,
   setThreadThinkingLevel,
+  threadRuntimeActivityRevision,
 } from "./runtime";
+import { threadNotificationsRevision } from "./notifications";
 import { archiveThreadForProject, listThreadsForWorkspace, type WorkspaceThreads } from "./threads";
 import type {
   AgentDraftDefaults,
@@ -80,47 +82,72 @@ export const archiveThread = os.input(threadArchiveInputSchema).handler(async ({
   return { threadPath: archived.threadPath };
 });
 
-export const listWorkspaceThreads = os
-  .input(
-    z
-      .object({
-        projects: z.array(z.string()).optional(),
-        limit: z.number().int().min(1).max(50).optional(),
-      })
-      .optional(),
-  )
-  .handler(async ({ input }) => {
-    const projects = dedupeProjects(input?.projects);
-    const targets = projects.length > 0 ? projects : listOpenProjects();
+const threadsListInputSchema = z
+  .object({
+    projects: z.array(z.string()).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  })
+  .optional();
 
-    const entries = await Promise.all(
-      targets.map(async (projectCwd) => {
-        try {
-          const workspaceCwds = listProjectWorkspaceCwds(projectCwd);
-          const groups = await Promise.all(workspaceCwds.map((cwd) => listThreadsForWorkspace(cwd, input?.limit)));
-          const merged = groups.flat().sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+type ThreadsListInput = z.infer<typeof threadsListInputSchema>;
 
-          const seen = new Set<string>();
-          const deduped = merged.filter((thread) => {
-            if (seen.has(thread.path)) {
-              return false;
+export const listWorkspaceThreads = os.input(threadsListInputSchema).handler(async ({ input }) => {
+  return resolveWorkspaceThreadsSnapshot(input);
+});
+
+export const watchWorkspaceThreadsActivity = os.input(threadsListInputSchema).handler(async function* ({ input }) {
+  let snapshot = await resolveWorkspaceThreadsSnapshot(input);
+  yield snapshot;
+
+  let resolve: (() => void) | null = null;
+  let pending = false;
+
+  const notify = () => {
+    if (resolve) {
+      resolve();
+      resolve = null;
+      return;
+    }
+
+    pending = true;
+  };
+
+  const disposeRuntime = threadRuntimeActivityRevision.subscribe(notify);
+  const disposeNotifications = threadNotificationsRevision.subscribe(notify);
+
+  try {
+    while (true) {
+      const shouldPollTitles = hasPendingThreadTitles(snapshot.projects);
+
+      if (!pending) {
+        await new Promise<void>((next) => {
+          let timer: ReturnType<typeof setTimeout> | null = null;
+
+          const wake = () => {
+            if (timer) {
+              clearTimeout(timer);
             }
-            seen.add(thread.path);
-            return true;
-          });
+            resolve = null;
+            next();
+          };
 
-          const limited = deduped.slice(0, Math.max(input?.limit ?? 12, 0));
+          resolve = wake;
 
-          return { cwd: projectCwd, threads: limited } satisfies WorkspaceThreads;
-        } catch (error) {
-          console.error(`Failed to list pi threads for project "${projectCwd}":`, error);
-          return { cwd: projectCwd, threads: [] } satisfies WorkspaceThreads;
-        }
-      }),
-    );
+          if (shouldPollTitles) {
+            timer = setTimeout(wake, 1_500);
+          }
+        });
+      }
 
-    return { projects: entries };
-  });
+      pending = false;
+      snapshot = await resolveWorkspaceThreadsSnapshot(input);
+      yield snapshot;
+    }
+  } finally {
+    disposeRuntime();
+    disposeNotifications();
+  }
+});
 
 /** Event types where we include an authoritative message tail for reliable sync. */
 const CHECKPOINT_EVENTS = new Set(["turn_end", "agent_end", "auto_compaction_end", "auto_retry_end"]);
@@ -309,6 +336,7 @@ export const agentRouter = {
   threadCreate: createThread,
   threadArchive: archiveThread,
   threadsList: listWorkspaceThreads,
+  threadsActivityWatch: watchWorkspaceThreadsActivity,
   threadWatch: watchThread,
   threadSend: sendThreadMessage,
   threadAbort: abortThread,
@@ -319,6 +347,43 @@ export const agentRouter = {
   threadSetModel,
   threadSetThinkingLevel,
 };
+
+async function resolveWorkspaceThreadsSnapshot(input?: ThreadsListInput): Promise<{ projects: WorkspaceThreads[] }> {
+  const projects = dedupeProjects(input?.projects);
+  const targets = projects.length > 0 ? projects : listOpenProjects();
+
+  const entries = await Promise.all(
+    targets.map(async (projectCwd) => {
+      try {
+        const workspaceCwds = listProjectWorkspaceCwds(projectCwd);
+        const groups = await Promise.all(workspaceCwds.map((cwd) => listThreadsForWorkspace(cwd, input?.limit)));
+        const merged = groups.flat().sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+
+        const seen = new Set<string>();
+        const deduped = merged.filter((thread) => {
+          if (seen.has(thread.path)) {
+            return false;
+          }
+          seen.add(thread.path);
+          return true;
+        });
+
+        const limited = deduped.slice(0, Math.max(input?.limit ?? 12, 0));
+
+        return { cwd: projectCwd, threads: limited } satisfies WorkspaceThreads;
+      } catch (error) {
+        console.error(`Failed to list pi threads for project "${projectCwd}":`, error);
+        return { cwd: projectCwd, threads: [] } satisfies WorkspaceThreads;
+      }
+    }),
+  );
+
+  return { projects: entries };
+}
+
+function hasPendingThreadTitles(projects: readonly WorkspaceThreads[]): boolean {
+  return projects.some((project) => project.threads.some((thread) => thread.isTitleGenerating));
+}
 
 function dedupeProjects(projects?: readonly string[]): string[] {
   if (!projects?.length) {

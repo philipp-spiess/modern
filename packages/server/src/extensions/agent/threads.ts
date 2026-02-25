@@ -11,7 +11,8 @@ import {
   type SessionInfo,
   type SessionHeader,
 } from "@mariozechner/pi-coding-agent";
-import { disposeThreadRuntimes } from "./runtime";
+import { clearThreadUnread, getThreadUnreadState } from "./notifications";
+import { disposeThreadRuntimes, getThreadRuntimeStreamingState } from "./runtime";
 
 const DEFAULT_THREAD_LIMIT = 12;
 const TITLE_RETRY_BACKOFF_MS = 5 * 60_000;
@@ -62,6 +63,8 @@ export interface ThreadSummary {
   updatedAt: string;
   messageCount: number;
   isTitleGenerating: boolean;
+  isStreaming: boolean;
+  hasUnread: boolean;
 }
 
 export interface WorkspaceThreads {
@@ -89,7 +92,7 @@ export async function listThreadsForWorkspace(cwd: string, limit = DEFAULT_THREA
       continue;
     }
 
-    output.push(toThreadSummary(session));
+    output.push(await toThreadSummary(session));
   }
 
   return output;
@@ -152,32 +155,46 @@ export async function archiveThreadForProject(
     await rm(resolvedThreadPath, { force: true });
   }
 
+  await clearThreadUnread(resolvedThreadPath);
+  if (resolvedThreadPath !== targetPath) {
+    await clearThreadUnread(targetPath);
+  }
+
   return {
     threadPath: targetPath,
     previousCwd,
   };
 }
 
-function toThreadSummary(session: SessionInfo): ThreadSummary {
+async function toThreadSummary(session: SessionInfo): Promise<ThreadSummary> {
   const explicitTitle = normalize(session.name);
   const firstPrompt = normalizeSessionFirstPrompt(session.firstMessage);
+  const resolvedThreadPath = path.resolve(session.path);
+  const isStreaming = await getThreadRuntimeStreamingState(resolvedThreadPath);
+  const hasUnread = getThreadUnreadState(resolvedThreadPath);
 
   if (explicitTitle) {
-    return buildThreadSummary(session, truncate(explicitTitle, TITLE_MAX_LENGTH), false);
+    return buildThreadSummary(session, truncate(explicitTitle, TITLE_MAX_LENGTH), false, isStreaming, hasUnread);
   }
 
   const directTitle = resolveDirectTitleFromFirstPrompt(firstPrompt);
   if (directTitle) {
-    return buildThreadSummary(session, truncate(directTitle, TITLE_MAX_LENGTH), false);
+    return buildThreadSummary(session, truncate(directTitle, TITLE_MAX_LENGTH), false, isStreaming, hasUnread);
   }
 
   const isTitleGenerating = queueTitleGenerationIfNeeded(session, firstPrompt);
   const fallbackTitle = firstPrompt ? truncate(firstPrompt, TITLE_MAX_LENGTH) : "Untitled Thread";
 
-  return buildThreadSummary(session, fallbackTitle, isTitleGenerating);
+  return buildThreadSummary(session, fallbackTitle, isTitleGenerating, isStreaming, hasUnread);
 }
 
-function buildThreadSummary(session: SessionInfo, title: string, isTitleGenerating: boolean): ThreadSummary {
+function buildThreadSummary(
+  session: SessionInfo,
+  title: string,
+  isTitleGenerating: boolean,
+  isStreaming: boolean,
+  hasUnread: boolean,
+): ThreadSummary {
   return {
     id: session.id,
     path: session.path,
@@ -186,6 +203,8 @@ function buildThreadSummary(session: SessionInfo, title: string, isTitleGenerati
     updatedAt: session.modified.toISOString(),
     messageCount: session.messageCount,
     isTitleGenerating,
+    isStreaming,
+    hasUnread,
   };
 }
 

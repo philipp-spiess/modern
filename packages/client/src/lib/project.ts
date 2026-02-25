@@ -103,6 +103,8 @@ export async function openProjectWithThread(cwd: string, threadPath: string, tit
       title,
     });
     syncProjectState(projectState);
+    await queryClient.invalidateQueries({ queryKey: ["agent", "threadsList"] });
+    await queryClient.invalidateQueries({ queryKey: ["agent", "threadsActivityWatch"] });
   } catch (error) {
     showToast({
       variant: "error",
@@ -157,6 +159,7 @@ export async function archiveThread(projectCwd: string, threadPath: string): Pro
   try {
     const archived = await client.agent.threadArchive({ projectCwd, threadPath });
     await queryClient.invalidateQueries({ queryKey: ["agent", "threadsList"] });
+    await queryClient.invalidateQueries({ queryKey: ["agent", "threadsActivityWatch"] });
     return archived.threadPath;
   } catch (error) {
     showToast({
