@@ -152,7 +152,7 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
 
   return (
     <div className="flex max-h-screen h-full flex-col p-2 pr-1">
-      <div data-tauri-drag-region className="h-[30px] shrink-0 flex items-center justify-end">
+      <div data-tauri-drag-region className="h-10 shrink-0 flex items-center justify-end">
         <button
           type="button"
           onClick={() => toggleSidebar()}
@@ -162,7 +162,7 @@ function Sidebar({ activeCwd, activeThread, workspaces, expandedByWorkspace }: S
           <PanelLeftOpen className="size-3.5" />
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 min-w-0 select-none flex-col overflow-y-auto p-2 gap-4">
+      <div className="flex min-h-0 flex-1 min-w-0 select-none flex-col overflow-y-auto p-2 pt-0 gap-4">
         <div className="p-1 w-full">
           <button
             type="button"
@@ -286,7 +286,7 @@ function WorkspaceItem({
             <div className="truncate text-xs">{basename(cwd)}</div>
           </button>
 
-          <div className="-mr-1.25 relative z-10 flex shrink-0 items-center">
+          <div className="-mr-1.25 relative z-10 flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
