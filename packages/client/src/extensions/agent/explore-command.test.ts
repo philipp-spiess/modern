@@ -14,6 +14,11 @@ describe("isExploreCommand", () => {
     ).toBe(true);
   });
 
+  test("marks find piped to sort as explore", () => {
+    expect(isExploreCommand("find packages/server/src/extensions -maxdepth 2 -type f | sort")).toBe(true);
+    expect(isExploreCommand("find packages -maxdepth 3 -type d | sort")).toBe(true);
+  });
+
   test("does not mark mixed mutating commands as explore", () => {
     expect(
       isExploreCommand("rm -rf tmp && rg -n MessageContent packages/client/src/extensions/agent/messages.tsx"),

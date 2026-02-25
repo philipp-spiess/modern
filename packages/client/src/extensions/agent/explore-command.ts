@@ -15,6 +15,8 @@ const EXPLORE_COMMANDS = new Set([
   // List / tree
   "ls",
   "tree",
+  // Output transforms (read-only)
+  "sort",
   // Read file contents
   "cat",
   "bat",
