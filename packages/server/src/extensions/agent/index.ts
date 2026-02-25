@@ -28,7 +28,7 @@ export default createExtension(() => {
 
   const openPanel = (input: OpenPanelArgs | string) => {
     const args = normalizeOpenPanelArgs(input);
-    const threadPath = path.resolve(modern.workspace.cwd, args.threadPath);
+    const threadPath = path.resolve(modern.project.cwd, args.threadPath);
 
     let panel = threadPanels.get(threadPath);
     const title = resolveTitle(args.title, threadPath);

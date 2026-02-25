@@ -9,8 +9,10 @@ import {
   getActiveWorkspaceCwd,
   onPanelClosed,
   registerExtensionCommand,
+  registerProjectWorkspaceProvider,
   state,
   unregisterExtensionCommand,
+  unregisterProjectWorkspaceProvider,
   updatePanel,
 } from "./state";
 import { get, keys, set } from "./storage";
@@ -20,6 +22,7 @@ import { TypedEmitter } from "./utils/typed-emitter";
 interface ExtensionsApi {
   readonly commands: CommandsApi;
   readonly window: WindowApi;
+  readonly project: ProjectApi;
   readonly workspace: WorkspaceApi;
   readonly storage: StorageApi;
 }
@@ -53,6 +56,27 @@ interface PanelHandle extends TypedEventEmitter<PanelEvents>, Disposable {
   state: Record<string, unknown>;
   iconColor?: string;
   closeOverlayIcon?: string;
+}
+
+export interface WorkspaceHandle {
+  readonly cwd: string;
+}
+
+export interface ProjectContext {
+  cwd: string;
+}
+
+export interface WorkspaceProvider {
+  readonly id: string;
+  readonly title: string;
+  create(project: ProjectContext): Promise<WorkspaceHandle>;
+  teardown?(workspace: WorkspaceHandle): Promise<void>;
+}
+
+interface ProjectEvents extends Record<string, never> {}
+interface ProjectApi extends TypedEventEmitter<ProjectEvents> {
+  readonly cwd: string;
+  registerWorkspaceProvider(provider: WorkspaceProvider): Disposable;
 }
 
 interface WorkspaceEvents extends Record<string, never> {}
@@ -104,8 +128,15 @@ export interface ExtensionModule {
 
 interface ExtensionRuntimeContext {
   readonly extensionId: string;
-  readonly cwd: string;
+  readonly projectCwd: string;
+  readonly workspaceCwd: string;
   readonly api: ExtensionsApi;
+}
+
+interface ExtensionApiContextOptions {
+  extensionId: string;
+  projectCwd: string;
+  workspaceCwd: string;
 }
 
 const extensionContext = new AsyncLocalStorage<ExtensionRuntimeContext>();
@@ -132,9 +163,6 @@ export const modern: ExtensionsApi = new Proxy({} as ExtensionsApi, {
   },
 });
 
-// Backward-compatible alias for existing extensions.
-export const diffs = modern;
-
 export function createExtension<T>(activate: ExtensionActivate<T>): {
   activate: (options: ExtensionActivationOptions) => Promise<T | (T & Disposable)>;
 } {
@@ -144,8 +172,10 @@ export function createExtension<T>(activate: ExtensionActivate<T>): {
       if (!extensionId) throw new Error("Extension activation requires a stable extensionId.");
       if (!cwd) throw new Error("Extension activation requires a cwd.");
 
-      const api = createExtensionsApi({ extensionId, cwd });
-      return extensionContext.run({ extensionId, cwd, api }, async () => {
+      const projectCwd = path.resolve(cwd);
+      const workspaceCwd = projectCwd;
+      const api = createExtensionsApi({ extensionId, projectCwd, workspaceCwd });
+      return extensionContext.run({ extensionId, projectCwd, workspaceCwd, api }, async () => {
         return await activate();
       });
     },
@@ -153,31 +183,55 @@ export function createExtension<T>(activate: ExtensionActivate<T>): {
 }
 
 export async function executeCommandForWorkspace<T>(cwd: string, command: string, ...args: unknown[]): Promise<T> {
+  return executeCommandForWorkspaceContext(cwd, cwd, command, ...args);
+}
+
+export async function executeCommandForWorkspaceContext<T>(
+  projectCwd: string,
+  workspaceCwd: string,
+  command: string,
+  ...args: unknown[]
+): Promise<T> {
   const entry = state.commands.value.get(command);
   if (!entry) {
     throw new Error(`Command "${command}" is not registered.`);
   }
 
-  const resolvedCwd = path.resolve(cwd);
-  const callback = entry.callbacksByWorkspace.get(resolvedCwd);
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  const resolvedWorkspaceCwd = path.resolve(workspaceCwd);
+  const callback = entry.callbacksByWorkspace.get(resolvedProjectCwd);
   if (!callback) {
-    throw new Error(`Command "${command}" is not available for workspace "${resolvedCwd}".`);
+    throw new Error(`Command "${command}" is not available for project "${resolvedProjectCwd}".`);
   }
 
   const api = createExtensionsApi({
     extensionId: entry.extensionId,
-    cwd: resolvedCwd,
+    projectCwd: resolvedProjectCwd,
+    workspaceCwd: resolvedWorkspaceCwd,
   });
 
-  return extensionContext.run({ extensionId: entry.extensionId, cwd: resolvedCwd, api }, async () => {
-    return (await callback(...args)) as T;
-  });
+  return extensionContext.run(
+    {
+      extensionId: entry.extensionId,
+      projectCwd: resolvedProjectCwd,
+      workspaceCwd: resolvedWorkspaceCwd,
+      api,
+    },
+    async () => {
+      return (await callback(...args)) as T;
+    },
+  );
 }
 
 export async function executeCommand<T>(command: string, ...args: unknown[]): Promise<T> {
+  const ctx = extensionContext.getStore();
+  if (ctx) {
+    return executeCommandForWorkspaceContext<T>(ctx.projectCwd, ctx.workspaceCwd, command, ...args);
+  }
+
   const cwd = getActiveWorkspaceCwd();
   if (!cwd) {
-    throw new Error(`Command "${command}" requires an active workspace.`);
+    throw new Error(`Command "${command}" requires an active project.`);
   }
 
   return executeCommandForWorkspace<T>(cwd, command, ...args);
@@ -197,14 +251,41 @@ export function listRegisteredCommands(): readonly {
   }));
 }
 
-function createExtensionsApi(options: ExtensionActivationOptions): ExtensionsApi {
-  const cwd = path.resolve(options.cwd);
+function createExtensionsApi(options: ExtensionApiContextOptions): ExtensionsApi {
+  const projectCwd = path.resolve(options.projectCwd);
+  const workspaceCwd = path.resolve(options.workspaceCwd);
+
   return {
-    commands: new Commands(options.extensionId, cwd),
-    window: new Window(cwd),
-    workspace: new Workspace(cwd),
-    storage: new Storage(options.extensionId, cwd),
+    commands: new Commands(options.extensionId, projectCwd),
+    window: new Window(projectCwd, workspaceCwd),
+    project: new Project(options.extensionId, projectCwd),
+    workspace: new Workspace(workspaceCwd),
+    storage: new Storage(options.extensionId, projectCwd),
   };
+}
+
+class Project extends TypedEmitter<ProjectEvents> implements ProjectApi {
+  constructor(
+    private readonly extensionId: string,
+    public readonly cwd: string,
+  ) {
+    super();
+  }
+
+  registerWorkspaceProvider(provider: WorkspaceProvider): Disposable {
+    registerProjectWorkspaceProvider({
+      projectCwd: this.cwd,
+      extensionId: this.extensionId,
+      id: provider.id,
+      title: provider.title,
+      create: provider.create.bind(provider),
+      teardown: provider.teardown?.bind(provider),
+    });
+
+    return createDisposable(() => {
+      unregisterProjectWorkspaceProvider(this.cwd, provider.id, this.extensionId);
+    });
+  }
 }
 
 class Commands implements CommandsApi {
@@ -238,7 +319,10 @@ class Commands implements CommandsApi {
 class Window extends TypedEmitter<WindowEvents> implements WindowApi {
   #panels = new Map<string, Panel>();
 
-  constructor(private readonly cwd: string) {
+  constructor(
+    private readonly projectCwd: string,
+    private readonly workspaceCwd: string,
+  ) {
     super();
   }
 
@@ -249,7 +333,8 @@ class Window extends TypedEmitter<WindowEvents> implements WindowApi {
 
     const panel = new Panel({
       id: randomUUID(),
-      cwd: this.cwd,
+      projectCwd: this.projectCwd,
+      workspaceCwd: this.workspaceCwd,
       viewType,
       module,
       title,
@@ -267,7 +352,8 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
   readonly id: string;
   readonly viewType: string;
   readonly module: string;
-  readonly #cwd: string;
+  readonly #projectCwd: string;
+  readonly #workspaceCwd: string;
   #title: string;
   #icon?: string;
   #state: Record<string, unknown> = {};
@@ -279,7 +365,8 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
 
   constructor(params: {
     id: string;
-    cwd: string;
+    projectCwd: string;
+    workspaceCwd: string;
     viewType: string;
     module: string;
     title: string;
@@ -289,7 +376,8 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
   }) {
     super();
     this.id = params.id;
-    this.#cwd = params.cwd;
+    this.#projectCwd = params.projectCwd;
+    this.#workspaceCwd = params.workspaceCwd;
     this.viewType = params.viewType;
     this.module = params.module;
     this.#title = params.title;
@@ -303,13 +391,13 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
       this.#remove(this.id);
     });
 
-    // Attach panel to workspace-scoped state
-    attachPanel(this.#cwd, {
+    // Attach panel to project-scoped session state.
+    attachPanel(this.#projectCwd, {
       id: this.id,
       viewType: this.viewType,
       module: this.module,
       title: this.#title,
-      workspaceCwd: this.#cwd,
+      workspaceCwd: this.#workspaceCwd,
       icon: this.#icon,
       state: this.#state,
     });
@@ -366,12 +454,12 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
 
   #updateGlobalState(): void {
     if (this.#disposed) return;
-    updatePanel(this.#cwd, {
+    updatePanel(this.#projectCwd, {
       id: this.id,
       viewType: this.viewType,
       module: this.module,
       title: this.#title,
-      workspaceCwd: this.#cwd,
+      workspaceCwd: this.#workspaceCwd,
       icon: this.#icon,
       state: this.#state,
       iconColor: this.#iconColor,
@@ -384,7 +472,7 @@ class Panel extends TypedEmitter<PanelEvents> implements PanelHandle {
     this.#disposed = true;
     this.#closeDisposable[Symbol.dispose]();
     this.#remove(this.id);
-    detachPanel(this.#cwd, this.id);
+    detachPanel(this.#projectCwd, this.id);
   }
 }
 

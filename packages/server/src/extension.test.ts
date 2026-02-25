@@ -49,7 +49,7 @@ describe("extension api", () => {
 
     const disposable = await extension.activate({ extensionId: "example", cwd: workspace });
 
-    await expect(executeCommand("example.needs-workspace")).rejects.toThrow(/active workspace/);
+    await expect(executeCommand("example.needs-workspace")).rejects.toThrow(/active project/);
 
     disposable?.[Symbol.dispose]();
   });

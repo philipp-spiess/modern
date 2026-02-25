@@ -88,12 +88,34 @@ interface WorkspaceSession {
   cleanup: () => Promise<void>;
 }
 
+export interface WorkspaceProviderRegistration {
+  projectCwd: string;
+  extensionId: string;
+  id: string;
+  title: string;
+  create(project: { cwd: string }): Promise<{ cwd: string }>;
+  teardown?(workspace: { cwd: string }): Promise<void>;
+}
+
+interface RegisteredWorkspaceProvider extends WorkspaceProviderRegistration {
+  readonly projectCwd: string;
+}
+
+interface ProjectWorkspaceRecord {
+  cwd: string;
+  providerId: string;
+  managed: boolean;
+  threadCount: number;
+}
+
 const WORKSPACES_STORAGE_SCOPE = "core:workspace-registry";
 const WORKSPACES_STORAGE_KEY = "open";
 const WORKSPACE_SIDEBAR_STORAGE_SCOPE = "core:workspace-sidebar";
 const WORKSPACE_SIDEBAR_COLLAPSED_KEY = "collapsed";
 
 const workspaceSessions = new Map<string, WorkspaceSession>();
+const workspaceProvidersByProject = new Map<string, Map<string, RegisteredWorkspaceProvider>>();
+const projectWorkspacesByProject = new Map<string, Map<string, ProjectWorkspaceRecord>>();
 
 const extensionEntries = [
   { extension: viewExtension, id: viewExtensionId },
@@ -192,6 +214,195 @@ export function getActiveWorkspaceCwd(): string | null {
 
 export function listOpenWorkspaces(): readonly string[] {
   return state.workspaces.value.open;
+}
+
+export function getActiveProjectCwd(): string | null {
+  return getActiveWorkspaceCwd();
+}
+
+export function listOpenProjects(): readonly string[] {
+  return listOpenWorkspaces();
+}
+
+export function getProjectExpansionMap(projects: readonly string[] = listOpenProjects()): Record<string, boolean> {
+  return getWorkspaceExpansionMap(projects);
+}
+
+export function listProjectWorkspaceProviders(projectCwd: string): ReadonlyArray<{ id: string; title: string }> {
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  const providers = workspaceProvidersByProject.get(resolvedProjectCwd);
+  if (!providers) {
+    return [];
+  }
+
+  return Array.from(providers.values())
+    .map((provider) => ({ id: provider.id, title: provider.title }))
+    .sort((left, right) => left.title.localeCompare(right.title));
+}
+
+export function getProjectWorkspaceProvider(
+  projectCwd: string,
+  providerId: string,
+): WorkspaceProviderRegistration | null {
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  const providers = workspaceProvidersByProject.get(resolvedProjectCwd);
+  if (!providers) {
+    return null;
+  }
+
+  return providers.get(providerId) ?? null;
+}
+
+export function registerProjectWorkspaceProvider(entry: WorkspaceProviderRegistration): void {
+  const resolvedProjectCwd = path.resolve(entry.projectCwd);
+  const id = entry.id.trim();
+  const title = entry.title.trim();
+
+  if (!id) {
+    throw new Error("Workspace provider id must be a non-empty string.");
+  }
+
+  if (!title) {
+    throw new Error(`Workspace provider "${id}" must provide a title.`);
+  }
+
+  const providers =
+    workspaceProvidersByProject.get(resolvedProjectCwd) ?? new Map<string, RegisteredWorkspaceProvider>();
+  const existing = providers.get(id);
+
+  if (existing && existing.extensionId !== entry.extensionId) {
+    throw new Error(
+      `Workspace provider "${id}" is already registered by extension "${existing.extensionId}" for project "${resolvedProjectCwd}".`,
+    );
+  }
+
+  providers.set(id, {
+    ...entry,
+    projectCwd: resolvedProjectCwd,
+    id,
+    title,
+  });
+
+  workspaceProvidersByProject.set(resolvedProjectCwd, providers);
+}
+
+export function unregisterProjectWorkspaceProvider(projectCwd: string, providerId: string, extensionId: string): void {
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  const providers = workspaceProvidersByProject.get(resolvedProjectCwd);
+  if (!providers) {
+    return;
+  }
+
+  const existing = providers.get(providerId);
+  if (!existing || existing.extensionId !== extensionId) {
+    return;
+  }
+
+  providers.delete(providerId);
+  if (providers.size === 0) {
+    workspaceProvidersByProject.delete(resolvedProjectCwd);
+  }
+}
+
+function getOrCreateProjectWorkspaceRegistry(projectCwd: string): Map<string, ProjectWorkspaceRecord> {
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  let registry = projectWorkspacesByProject.get(resolvedProjectCwd);
+
+  if (!registry) {
+    registry = new Map<string, ProjectWorkspaceRecord>();
+    projectWorkspacesByProject.set(resolvedProjectCwd, registry);
+  }
+
+  if (!registry.has(resolvedProjectCwd)) {
+    registry.set(resolvedProjectCwd, {
+      cwd: resolvedProjectCwd,
+      providerId: "core.primary",
+      managed: false,
+      threadCount: 0,
+    });
+  }
+
+  return registry;
+}
+
+export function registerThreadWorkspace(
+  projectCwd: string,
+  workspaceCwd: string,
+  options?: { providerId?: string; managed?: boolean },
+): void {
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  const resolvedWorkspaceCwd = path.resolve(workspaceCwd);
+  const registry = getOrCreateProjectWorkspaceRegistry(resolvedProjectCwd);
+  const existing = registry.get(resolvedWorkspaceCwd);
+
+  if (existing) {
+    existing.threadCount += 1;
+    if (options?.providerId) {
+      existing.providerId = options.providerId;
+    }
+    if (typeof options?.managed === "boolean") {
+      existing.managed = options.managed;
+    }
+    return;
+  }
+
+  registry.set(resolvedWorkspaceCwd, {
+    cwd: resolvedWorkspaceCwd,
+    providerId: options?.providerId ?? "core.primary",
+    managed: options?.managed ?? false,
+    threadCount: 1,
+  });
+}
+
+export async function releaseThreadWorkspace(
+  projectCwd: string,
+  workspaceCwd: string,
+): Promise<ProjectWorkspaceRecord | null> {
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  const resolvedWorkspaceCwd = path.resolve(workspaceCwd);
+  const registry = projectWorkspacesByProject.get(resolvedProjectCwd);
+
+  if (!registry) {
+    return null;
+  }
+
+  const record = registry.get(resolvedWorkspaceCwd);
+  if (!record) {
+    return null;
+  }
+
+  record.threadCount = Math.max(0, record.threadCount - 1);
+
+  const shouldTeardown = record.threadCount === 0 && record.managed;
+  if (shouldTeardown) {
+    registry.delete(resolvedWorkspaceCwd);
+
+    const providers = workspaceProvidersByProject.get(resolvedProjectCwd);
+    const provider = providers?.get(record.providerId);
+
+    if (provider?.teardown) {
+      try {
+        await provider.teardown({ cwd: resolvedWorkspaceCwd });
+      } catch (error) {
+        console.error(
+          `Failed to teardown managed workspace "${resolvedWorkspaceCwd}" (provider: "${record.providerId}") for project "${resolvedProjectCwd}":`,
+          error,
+        );
+      }
+    }
+  }
+
+  if (registry.size === 0) {
+    projectWorkspacesByProject.delete(resolvedProjectCwd);
+  }
+
+  return { ...record };
+}
+
+export function listProjectWorkspaceCwds(projectCwd: string): string[] {
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  const registry = getOrCreateProjectWorkspaceRegistry(resolvedProjectCwd);
+  return Array.from(registry.values(), (entry) => entry.cwd);
 }
 
 export function getWorkspaceExpansionMap(
@@ -455,6 +666,7 @@ export async function openWorkspace(cwd: string) {
   }
 
   await assertGitWorkspace(resolvedCwd);
+  getOrCreateProjectWorkspaceRegistry(resolvedCwd);
 
   openWorkspacePromise = (async () => {
     state.workspaces.value = withActiveWorkspace(resolvedCwd);
@@ -492,6 +704,22 @@ export async function openWorkspaceWithThread(cwd: string, thread: WorkspaceThre
   setWorkspaceActiveThread(cwd, thread);
 }
 
+export async function openProject(cwd: string): Promise<void> {
+  await openWorkspace(cwd);
+}
+
+export async function openProjectWithThread(cwd: string, thread: WorkspaceThreadSelection): Promise<void> {
+  await openWorkspaceWithThread(cwd, thread);
+}
+
+export async function removeProject(cwd: string): Promise<void> {
+  await removeWorkspace(cwd);
+}
+
+export async function setProjectExpanded(cwd: string, expanded: boolean): Promise<void> {
+  await setWorkspaceExpanded(cwd, expanded);
+}
+
 export async function removeWorkspace(cwd: string): Promise<void> {
   const resolvedCwd = path.resolve(cwd);
   const current = state.workspaces.value;
@@ -509,6 +737,9 @@ export async function removeWorkspace(cwd: string): Promise<void> {
     }
     workspaceSessions.delete(resolvedCwd);
   }
+
+  workspaceProvidersByProject.delete(resolvedCwd);
+  projectWorkspacesByProject.delete(resolvedCwd);
 
   const nextOpen = current.open.filter((entry) => entry !== resolvedCwd);
   const nextActive = current.active === resolvedCwd ? (nextOpen[0] ?? null) : current.active;
@@ -611,6 +842,8 @@ export function __resetStateForTests() {
     void session.cleanup();
   }
   workspaceSessions.clear();
+  workspaceProvidersByProject.clear();
+  projectWorkspacesByProject.clear();
 
   if (activeGitWatcher) {
     void activeGitWatcher[Symbol.dispose]();

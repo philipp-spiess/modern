@@ -37,7 +37,7 @@ export default createExtension(() => {
     const panel = modern.window.createReactPanel("terminal", "terminal/panel.tsx", title, "terminal-square");
     panel.state = {
       terminalId,
-      cwd: cwd ?? modern.workspace.cwd,
+      cwd: cwd ?? modern.project.cwd,
     };
     terminalPanels.set(terminalId, panel);
 

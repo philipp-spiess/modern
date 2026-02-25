@@ -48,7 +48,7 @@ export default createExtension(() => {
 
   disposables.push(
     modern.commands.registerCommand(
-      "workspace.newThread",
+      "project.newThread",
       () => {
         // Implemented in the client
       },

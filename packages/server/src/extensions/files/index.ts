@@ -7,8 +7,8 @@ import { saveFile } from "./shared";
 export const id = "modern.files";
 
 export default createExtension(async () => {
-  const cwd = modern.workspace.cwd;
-  if (!cwd) throw new Error("Workspace cwd is not available.");
+  const cwd = modern.project.cwd;
+  if (!cwd) throw new Error("Project cwd is not available.");
 
   const disposables: Disposable[] = [];
   type PanelHandle = ReturnType<typeof modern.window.createReactPanel>;
@@ -65,7 +65,7 @@ export default createExtension(async () => {
       // Client-side handled
     },
     {
-      title: "File: Open Workspace…",
+      title: "File: Open Project…",
       defaultKeybinding: { key: "cmd+shift+o", scope: "global" },
     },
   );

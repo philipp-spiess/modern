@@ -1,9 +1,13 @@
 import { os } from "@orpc/server";
 import type { StatusResult } from "simple-git";
 import * as z from "zod";
-import { executeCommand, executeCommandForWorkspace, listRegisteredCommands } from "./extension";
+import {
+  executeCommand,
+  executeCommandForWorkspace,
+  executeCommandForWorkspaceContext,
+  listRegisteredCommands,
+} from "./extension";
 import { agentRouter } from "./extensions/agent/router";
-import { removeThreadsForWorkspace } from "./extensions/agent/threads";
 import { filesRouter } from "./extensions/files/router";
 import { fileIndex } from "./file-index";
 import {
@@ -23,16 +27,17 @@ import { discoverRecentRepos } from "./recent-repos";
 import { settings, writeSettings } from "./settings";
 import {
   closeTab,
-  getActiveWorkspaceCwd,
+  getActiveProjectCwd,
+  getProjectExpansionMap,
   getWorkspaceActiveThread,
-  getWorkspaceExpansionMap,
   getWorkspacePanels,
   getWorkspaceTabs,
-  listOpenWorkspaces,
-  openWorkspace,
-  openWorkspaceWithThread,
-  removeWorkspace as removeWorkspaceFromState,
-  setWorkspaceExpanded,
+  listOpenProjects,
+  listProjectWorkspaceProviders,
+  openProject,
+  openProjectWithThread,
+  removeProject as removeProjectFromState,
+  setProjectExpanded,
   state,
   workspaceStateRevision,
 } from "./state";
@@ -146,63 +151,62 @@ export const filesQuickOpen = os
     return { hits };
   });
 
-const resolveWorkspaceState = () => {
-  const workspaces = listOpenWorkspaces();
+const resolveProjectState = () => {
+  const projects = listOpenProjects();
 
   return {
-    cwd: getActiveWorkspaceCwd(),
-    workspaces,
-    expandedByWorkspace: getWorkspaceExpansionMap(workspaces),
+    cwd: getActiveProjectCwd(),
+    projects,
+    expandedByProject: getProjectExpansionMap(projects),
     activeThread: getWorkspaceActiveThread(),
   };
 };
 
-export const workspaceRecentRepos = os
+export const projectRecentRepos = os
   .input(z.object({ limit: z.number().int().min(1).max(50).optional() }).optional())
   .handler(async ({ input }) => {
     const repos = await discoverRecentRepos(input?.limit ?? 20);
     return { repos };
   });
 
-export const workspaceCwd = os.handler(() => {
-  return resolveWorkspaceState();
+export const projectCurrent = os.handler(() => {
+  return resolveProjectState();
 });
 
-export const workspaceOpen = os
+export const projectOpen = os
   .input(
     z.object({
       cwd: z.string(),
     }),
   )
   .handler(async ({ input: { cwd } }) => {
-    await openWorkspace(cwd);
-    return resolveWorkspaceState();
+    await openProject(cwd);
+    return resolveProjectState();
   });
 
-export const workspaceActivate = os
+export const projectActivate = os
   .input(
     z.object({
       cwd: z.string(),
     }),
   )
   .handler(async ({ input: { cwd } }) => {
-    await openWorkspace(cwd);
-    return resolveWorkspaceState();
+    await openProject(cwd);
+    return resolveProjectState();
   });
 
-export const workspaceRemove = os
+export const projectRemove = os
   .input(
     z.object({
       cwd: z.string(),
     }),
   )
   .handler(async ({ input: { cwd } }) => {
-    await removeThreadsForWorkspace(cwd);
-    await removeWorkspaceFromState(cwd);
-    return resolveWorkspaceState();
+    await removeProjectFromState(cwd);
+    return resolveProjectState();
   });
 
-export const workspaceSetExpanded = os
+export const projectSetExpanded = os
   .input(
     z.object({
       cwd: z.string(),
@@ -210,11 +214,11 @@ export const workspaceSetExpanded = os
     }),
   )
   .handler(async ({ input }) => {
-    await setWorkspaceExpanded(input.cwd, input.expanded);
-    return resolveWorkspaceState();
+    await setProjectExpanded(input.cwd, input.expanded);
+    return resolveProjectState();
   });
 
-export const workspaceOpenWithThread = os
+export const projectOpenWithThread = os
   .input(
     z.object({
       cwd: z.string(),
@@ -223,15 +227,15 @@ export const workspaceOpenWithThread = os
     }),
   )
   .handler(async ({ input }) => {
-    await openWorkspaceWithThread(input.cwd, {
+    await openProjectWithThread(input.cwd, {
       kind: "existing",
       threadPath: input.threadPath,
       title: input.title,
     });
-    return resolveWorkspaceState();
+    return resolveProjectState();
   });
 
-export const workspaceOpenNewThread = os
+export const projectOpenNewThread = os
   .input(
     z.object({
       cwd: z.string(),
@@ -239,11 +243,24 @@ export const workspaceOpenNewThread = os
     }),
   )
   .handler(async ({ input }) => {
-    await openWorkspaceWithThread(input.cwd, {
+    await openProjectWithThread(input.cwd, {
       kind: "draft",
       title: input.title,
     });
-    return resolveWorkspaceState();
+    return resolveProjectState();
+  });
+
+export const projectWorkspaceProviders = os
+  .input(z.object({ cwd: z.string().optional() }).optional())
+  .handler(async ({ input }) => {
+    const projectCwd = input?.cwd ?? getActiveProjectCwd();
+    if (!projectCwd) {
+      return { providers: [] };
+    }
+
+    return {
+      providers: listProjectWorkspaceProviders(projectCwd),
+    };
   });
 
 export const tabsClose = os
@@ -372,12 +389,23 @@ export const commandsRun = os
     z.object({
       command: z.string(),
       args: z.array(z.any()).optional(),
-      cwd: z.string().optional(),
+      projectCwd: z.string().optional(),
+      workspaceCwd: z.string().optional(),
     }),
   )
   .handler(async ({ input }) => {
-    const result = input.cwd
-      ? await executeCommandForWorkspace(input.cwd, input.command, ...(input.args ?? []))
+    const resolvedWorkspaceCwd = input.workspaceCwd;
+    const resolvedProjectCwd = input.projectCwd ?? getActiveProjectCwd() ?? resolvedWorkspaceCwd;
+
+    const result = resolvedProjectCwd
+      ? resolvedWorkspaceCwd
+        ? await executeCommandForWorkspaceContext(
+            resolvedProjectCwd,
+            resolvedWorkspaceCwd,
+            input.command,
+            ...(input.args ?? []),
+          )
+        : await executeCommandForWorkspace(resolvedProjectCwd, input.command, ...(input.args ?? []))
       : await executeCommand(input.command, ...(input.args ?? []));
     return { result };
   });
@@ -445,15 +473,16 @@ type AppRouter = {
   files: {
     quickOpen: typeof filesQuickOpen;
   } & typeof filesRouter;
-  workspace: {
-    cwd: typeof workspaceCwd;
-    open: typeof workspaceOpen;
-    activate: typeof workspaceActivate;
-    remove: typeof workspaceRemove;
-    setExpanded: typeof workspaceSetExpanded;
-    openWithThread: typeof workspaceOpenWithThread;
-    openNewThread: typeof workspaceOpenNewThread;
-    recentRepos: typeof workspaceRecentRepos;
+  project: {
+    current: typeof projectCurrent;
+    open: typeof projectOpen;
+    activate: typeof projectActivate;
+    remove: typeof projectRemove;
+    setExpanded: typeof projectSetExpanded;
+    openWithThread: typeof projectOpenWithThread;
+    openNewThread: typeof projectOpenNewThread;
+    workspaceProviders: typeof projectWorkspaceProviders;
+    recentRepos: typeof projectRecentRepos;
   };
   tabs: {
     watch: typeof tabsWatch;
@@ -488,15 +517,16 @@ export const router: AppRouter = {
     quickOpen: filesQuickOpen,
     ...filesRouter,
   },
-  workspace: {
-    cwd: workspaceCwd,
-    open: workspaceOpen,
-    activate: workspaceActivate,
-    remove: workspaceRemove,
-    setExpanded: workspaceSetExpanded,
-    openWithThread: workspaceOpenWithThread,
-    openNewThread: workspaceOpenNewThread,
-    recentRepos: workspaceRecentRepos,
+  project: {
+    current: projectCurrent,
+    open: projectOpen,
+    activate: projectActivate,
+    remove: projectRemove,
+    setExpanded: projectSetExpanded,
+    openWithThread: projectOpenWithThread,
+    openNewThread: projectOpenNewThread,
+    workspaceProviders: projectWorkspaceProviders,
+    recentRepos: projectRecentRepos,
   },
   tabs: {
     watch: tabsWatch,
