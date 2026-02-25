@@ -471,11 +471,17 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
                   }}
                   className={
                     jumpHighlightPath === change.path
-                      ? "overflow-hidden rounded-md border border-cyan-400/40 bg-black/20 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]"
-                      : "overflow-hidden rounded-md border border-white/10 bg-black/20"
+                      ? "overflow-hidden rounded-md border border-white/12 bg-black/20 outline-none focus:outline-none focus-visible:outline-none"
+                      : "overflow-hidden rounded-md border border-white/10 bg-black/20 outline-none focus:outline-none focus-visible:outline-none"
                   }
                 >
-                  <div className="flex items-center gap-2 border-b border-white/10 bg-white/4 px-2 py-1.5">
+                  <div
+                    className={
+                      isExpanded
+                        ? "flex items-center gap-2 border-b border-white/10 bg-white/4 px-2 py-1.5"
+                        : "flex items-center gap-2 bg-white/4 px-2 py-1.5"
+                    }
+                  >
                     <button
                       type="button"
                       onClick={() => toggleExpandedForPath(change.path)}
