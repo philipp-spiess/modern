@@ -1,12 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   AuthStorage,
   createAgentSession,
+  getAgentDir,
   ModelRegistry,
   SessionManager,
   type SessionInfo,
+  type SessionHeader,
 } from "@mariozechner/pi-coding-agent";
 import { disposeThreadRuntimes } from "./runtime";
 
@@ -15,6 +18,7 @@ const TITLE_RETRY_BACKOFF_MS = 5 * 60_000;
 const TITLE_MAX_LENGTH = 80;
 const TITLE_TASK_MAX_LENGTH = 1_500;
 const DIRECT_FIRST_PROMPT_MAX_WORDS = 5;
+const THREAD_LIFECYCLE_CUSTOM_TYPE = "modern.thread.lifecycle";
 
 const TITLE_PROMPT_TEMPLATE = `Write a concise 3-6 word title for this coding task.
 - No colons.
@@ -41,6 +45,15 @@ let titleGenerationQueue: Promise<void> = Promise.resolve();
 
 type AvailableModel = ReturnType<ModelRegistry["getAvailable"]>[number];
 
+type ThreadLifecycleState = "active" | "archived";
+
+interface ThreadLifecycleRecord {
+  state: ThreadLifecycleState;
+  archivedAt?: string;
+  workspaceRootCwd?: string;
+  previousCwd?: string;
+}
+
 export interface ThreadSummary {
   id: string;
   path: string;
@@ -62,9 +75,24 @@ export async function listThreadsForWorkspace(cwd: string, limit = DEFAULT_THREA
   const sorted = sessions
     .filter((session) => session.messageCount > 0)
     .sort((a, b) => b.modified.getTime() - a.modified.getTime());
-  const selected = sorted.slice(0, Math.max(limit, 0));
 
-  return selected.map((session) => toThreadSummary(session));
+  const max = Math.max(limit, 0);
+  const output: ThreadSummary[] = [];
+
+  for (const session of sorted) {
+    if (output.length >= max) {
+      break;
+    }
+
+    const lifecycle = readThreadLifecycleState(session.path);
+    if (lifecycle === "archived") {
+      continue;
+    }
+
+    output.push(toThreadSummary(session));
+  }
+
+  return output;
 }
 
 export async function removeThreadsForWorkspace(cwd: string): Promise<number> {
@@ -78,6 +106,56 @@ export async function removeThreadsForWorkspace(cwd: string): Promise<number> {
   await disposeThreadRuntimes(threadPaths);
   await Promise.all(threadPaths.map((threadPath) => rm(threadPath, { force: true })));
   return threadPaths.length;
+}
+
+export async function archiveThreadForProject(
+  projectCwd: string,
+  threadPath: string,
+): Promise<{ threadPath: string; previousCwd: string }> {
+  const resolvedProjectCwd = path.resolve(projectCwd);
+  const resolvedThreadPath = path.resolve(threadPath);
+
+  await disposeThreadRuntimes([resolvedThreadPath]);
+
+  const manager = SessionManager.open(resolvedThreadPath);
+  const header = manager.getHeader();
+  if (!header) {
+    throw new Error(`Session header missing for thread "${resolvedThreadPath}".`);
+  }
+
+  const previousCwd = path.resolve(header.cwd || resolvedProjectCwd);
+
+  manager.appendCustomEntry(THREAD_LIFECYCLE_CUSTOM_TYPE, {
+    state: "archived",
+    archivedAt: new Date().toISOString(),
+    workspaceRootCwd: resolvedProjectCwd,
+    previousCwd,
+  } satisfies ThreadLifecycleRecord);
+
+  const nextHeader: SessionHeader = {
+    ...header,
+    cwd: resolvedProjectCwd,
+  };
+
+  const entries = manager.getEntries();
+  const targetDir = resolveSessionDirectoryForCwd(resolvedProjectCwd);
+  await mkdir(targetDir, { recursive: true });
+
+  const targetPath = await resolveArchiveTargetPath(targetDir, resolvedThreadPath);
+  const tempPath = `${targetPath}.tmp-${randomUUID()}`;
+  const serialized = serializeSession(nextHeader, entries);
+
+  await writeFile(tempPath, serialized, "utf8");
+  await rename(tempPath, targetPath);
+
+  if (resolvedThreadPath !== targetPath) {
+    await rm(resolvedThreadPath, { force: true });
+  }
+
+  return {
+    threadPath: targetPath,
+    previousCwd,
+  };
 }
 
 function toThreadSummary(session: SessionInfo): ThreadSummary {
@@ -300,6 +378,63 @@ function normalizeGeneratedTitle(value: string): string | null {
   }
 
   return truncate(cleaned, TITLE_MAX_LENGTH);
+}
+
+function readThreadLifecycleState(threadPath: string): ThreadLifecycleState {
+  try {
+    const manager = SessionManager.open(threadPath);
+    const entries = manager.getEntries();
+
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const entry = entries[i];
+      if (entry?.type !== "custom") {
+        continue;
+      }
+
+      if (entry.customType !== THREAD_LIFECYCLE_CUSTOM_TYPE) {
+        continue;
+      }
+
+      const data = entry.data as ThreadLifecycleRecord | undefined;
+      if (data?.state === "archived") {
+        return "archived";
+      }
+
+      if (data?.state === "active") {
+        return "active";
+      }
+    }
+  } catch {
+    return "active";
+  }
+
+  return "active";
+}
+
+function serializeSession(header: SessionHeader, entries: ReturnType<SessionManager["getEntries"]>): string {
+  return [header, ...entries].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+}
+
+function resolveSessionDirectoryForCwd(cwd: string): string {
+  const safePath = `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+  return path.join(getAgentDir(), "sessions", safePath);
+}
+
+async function resolveArchiveTargetPath(targetDir: string, sourcePath: string): Promise<string> {
+  const fileName = path.basename(sourcePath);
+  const defaultTarget = path.join(targetDir, fileName);
+
+  if (path.resolve(defaultTarget) === path.resolve(sourcePath)) {
+    return defaultTarget;
+  }
+
+  if (!existsSync(defaultTarget)) {
+    return defaultTarget;
+  }
+
+  const parsed = path.parse(fileName);
+  const candidate = `${parsed.name}-${Date.now()}${parsed.ext}`;
+  return path.join(targetDir, candidate);
 }
 
 function normalizeSessionFirstPrompt(value?: string): string {

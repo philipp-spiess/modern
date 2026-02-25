@@ -1,7 +1,13 @@
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { os } from "@orpc/server";
 import * as z from "zod";
-import { listOpenWorkspaces } from "../../state";
+import {
+  getProjectWorkspaceProvider,
+  listOpenProjects,
+  listProjectWorkspaceCwds,
+  registerThreadWorkspace,
+  releaseThreadWorkspace,
+} from "../../state";
 import {
   createThreadRuntimeForWorkspace,
   getThreadMetaState,
@@ -14,7 +20,7 @@ import {
   setThreadModel,
   setThreadThinkingLevel,
 } from "./runtime";
-import { listThreadsForWorkspace, type WorkspaceThreads } from "./threads";
+import { archiveThreadForProject, listThreadsForWorkspace, type WorkspaceThreads } from "./threads";
 import type {
   AgentDraftDefaults,
   AgentThreadAbortResult,
@@ -37,40 +43,83 @@ const threadSendInputSchema = z.object({
 });
 
 const threadCreateInputSchema = z.object({
-  cwd: z.string().min(1),
+  projectCwd: z.string().min(1),
+  workspaceProviderId: z.string().min(1).optional(),
+});
+
+const threadArchiveInputSchema = z.object({
+  projectCwd: z.string().min(1),
+  threadPath: z.string().min(1),
 });
 
 export const createThread = os.input(threadCreateInputSchema).handler(async ({ input }) => {
-  const runtime = await createThreadRuntimeForWorkspace(input.cwd);
-  return { threadPath: runtime.threadPath };
+  let targetWorkspaceCwd = input.projectCwd;
+
+  if (input.workspaceProviderId) {
+    const provider = getProjectWorkspaceProvider(input.projectCwd, input.workspaceProviderId);
+    if (!provider) {
+      throw new Error(`Workspace provider not found: ${input.workspaceProviderId}`);
+    }
+
+    const handle = await provider.create({ cwd: input.projectCwd });
+    targetWorkspaceCwd = handle.cwd;
+  }
+
+  const runtime = await createThreadRuntimeForWorkspace(targetWorkspaceCwd);
+  registerThreadWorkspace(input.projectCwd, targetWorkspaceCwd, {
+    providerId: input.workspaceProviderId,
+    managed: Boolean(input.workspaceProviderId),
+  });
+
+  return { threadPath: runtime.threadPath, cwd: targetWorkspaceCwd };
+});
+
+export const archiveThread = os.input(threadArchiveInputSchema).handler(async ({ input }) => {
+  const archived = await archiveThreadForProject(input.projectCwd, input.threadPath);
+  await releaseThreadWorkspace(input.projectCwd, archived.previousCwd);
+  return { threadPath: archived.threadPath };
 });
 
 export const listWorkspaceThreads = os
   .input(
     z
       .object({
-        workspaces: z.array(z.string()).optional(),
+        projects: z.array(z.string()).optional(),
         limit: z.number().int().min(1).max(50).optional(),
       })
       .optional(),
   )
   .handler(async ({ input }) => {
-    const workspaces = dedupeWorkspaces(input?.workspaces);
-    const targets = workspaces.length > 0 ? workspaces : listOpenWorkspaces();
+    const projects = dedupeProjects(input?.projects);
+    const targets = projects.length > 0 ? projects : listOpenProjects();
 
     const entries = await Promise.all(
-      targets.map(async (cwd) => {
+      targets.map(async (projectCwd) => {
         try {
-          const threads = await listThreadsForWorkspace(cwd, input?.limit);
-          return { cwd, threads } satisfies WorkspaceThreads;
+          const workspaceCwds = listProjectWorkspaceCwds(projectCwd);
+          const groups = await Promise.all(workspaceCwds.map((cwd) => listThreadsForWorkspace(cwd, input?.limit)));
+          const merged = groups.flat().sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+
+          const seen = new Set<string>();
+          const deduped = merged.filter((thread) => {
+            if (seen.has(thread.path)) {
+              return false;
+            }
+            seen.add(thread.path);
+            return true;
+          });
+
+          const limited = deduped.slice(0, Math.max(input?.limit ?? 12, 0));
+
+          return { cwd: projectCwd, threads: limited } satisfies WorkspaceThreads;
         } catch (error) {
-          console.error(`Failed to list pi threads for workspace "${cwd}":`, error);
-          return { cwd, threads: [] } satisfies WorkspaceThreads;
+          console.error(`Failed to list pi threads for project "${projectCwd}":`, error);
+          return { cwd: projectCwd, threads: [] } satisfies WorkspaceThreads;
         }
       }),
     );
 
-    return { workspaces: entries };
+    return { projects: entries };
   });
 
 /** Event types where we include an authoritative message tail for reliable sync. */
@@ -197,7 +246,7 @@ export const draftDefaults = os
   .input(
     z
       .object({
-        cwd: z.string().min(1),
+        projectCwd: z.string().min(1),
         provider: z.string().min(1).optional(),
         modelId: z.string().min(1).optional(),
       })
@@ -214,7 +263,7 @@ export const draftDefaults = os
   )
   .handler(async ({ input }) => {
     const defaults = await getDraftDefaultsForWorkspace(
-      input.cwd,
+      input.projectCwd,
       input.provider && input.modelId ? { provider: input.provider, modelId: input.modelId } : undefined,
     );
     return { defaults } satisfies { defaults: AgentDraftDefaults };
@@ -258,6 +307,7 @@ export const enabledModelsSet = os.input(z.object({ patterns: z.array(z.string()
 
 export const agentRouter = {
   threadCreate: createThread,
+  threadArchive: archiveThread,
   threadsList: listWorkspaceThreads,
   threadWatch: watchThread,
   threadSend: sendThreadMessage,
@@ -270,12 +320,12 @@ export const agentRouter = {
   threadSetThinkingLevel,
 };
 
-function dedupeWorkspaces(workspaces?: readonly string[]): string[] {
-  if (!workspaces?.length) {
+function dedupeProjects(projects?: readonly string[]): string[] {
+  if (!projects?.length) {
     return [];
   }
 
-  return [...new Set(workspaces.filter(Boolean))];
+  return [...new Set(projects.filter(Boolean))];
 }
 
 function resolveStreamingDelivery(
