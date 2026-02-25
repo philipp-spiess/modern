@@ -17,6 +17,26 @@ export const gitStatusSignal = signal<{ status: StatusResult | null; rev: number
   rev: 0,
 });
 
+type GitInstance = NonNullable<typeof git.value>;
+
+interface ChangeSummary {
+  insertions: number;
+  deletions: number;
+}
+
+const EMPTY_CHANGE_SUMMARY: ChangeSummary = {
+  insertions: 0,
+  deletions: 0,
+};
+
+export interface GitSummarySnapshot {
+  current: string | null;
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+  generatedAt: number;
+}
+
 export type WorkingChangeKind = "modified" | "added" | "deleted" | "renamed" | "untracked";
 
 export interface WorkingChangeFile {
@@ -39,6 +59,7 @@ async function refreshGitStatus() {
       gitStatusSignal.value = { status: null, rev: gitStatusSignal.value.rev + 1 };
       return;
     }
+
     const status = await instance.status();
     gitStatusSignal.value = { status, rev: gitStatusSignal.value.rev + 1 };
   } catch (error) {
@@ -145,6 +166,32 @@ export async function showWorktree(path: string): Promise<string | null> {
   }
 }
 
+export async function buildGitSummarySnapshot(input?: { cwd?: string }): Promise<GitSummarySnapshot> {
+  const cwd = input?.cwd ?? getActiveWorkspaceCwd();
+  const instance = cwd ? simpleGit(cwd) : null;
+  if (!instance || !cwd) {
+    return {
+      current: null,
+      filesChanged: 0,
+      insertions: 0,
+      deletions: 0,
+      generatedAt: Date.now(),
+    };
+  }
+
+  const status = await instance.status();
+  const trackedSummary = await buildTrackedSummary(instance);
+  const untrackedSummary = await buildUntrackedSummary(cwd, status.not_added);
+
+  return {
+    current: status.current || null,
+    filesChanged: collectWorkingChangeFiles(status).length,
+    insertions: trackedSummary.insertions + untrackedSummary.insertions,
+    deletions: trackedSummary.deletions + untrackedSummary.deletions,
+    generatedAt: Date.now(),
+  };
+}
+
 export async function buildWorkingChangesSnapshot(input?: { cwd?: string }): Promise<WorkingChangesSnapshot> {
   const cwd = input?.cwd ?? getActiveWorkspaceCwd();
   const instance = cwd ? simpleGit(cwd) : null;
@@ -168,7 +215,73 @@ export async function buildWorkingChangesSnapshot(input?: { cwd?: string }): Pro
   };
 }
 
-async function buildTrackedPatch(instance: NonNullable<typeof git.value>): Promise<string> {
+async function buildTrackedSummary(instance: GitInstance): Promise<ChangeSummary> {
+  const summaryFromHead = await readDiffSummary(instance, ["HEAD", "--"]);
+  if (summaryFromHead) {
+    return summaryFromHead;
+  }
+
+  // HEAD may not exist yet in freshly initialized repositories.
+  const stagedSummary = (await readDiffSummary(instance, ["--cached", "--"])) ?? EMPTY_CHANGE_SUMMARY;
+  const unstagedSummary = (await readDiffSummary(instance, ["--"])) ?? EMPTY_CHANGE_SUMMARY;
+
+  return {
+    insertions: stagedSummary.insertions + unstagedSummary.insertions,
+    deletions: stagedSummary.deletions + unstagedSummary.deletions,
+  };
+}
+
+async function readDiffSummary(instance: GitInstance, args: string[]): Promise<ChangeSummary | null> {
+  try {
+    const summary = await instance.diffSummary(args);
+    return {
+      insertions: summary.insertions,
+      deletions: summary.deletions,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function buildUntrackedSummary(cwd: string, untrackedPaths: readonly string[]): Promise<ChangeSummary> {
+  if (untrackedPaths.length === 0) {
+    return EMPTY_CHANGE_SUMMARY;
+  }
+
+  let insertions = 0;
+  const uniquePaths = [...new Set(untrackedPaths)].sort((left, right) => left.localeCompare(right));
+
+  for (const relativePath of uniquePaths) {
+    const fullPath = path.join(cwd, relativePath);
+    const stats = await stat(fullPath).catch(() => null);
+    if (!stats || !stats.isFile()) {
+      continue;
+    }
+
+    try {
+      const content = await Bun.file(fullPath).text();
+      insertions += countTextLines(content);
+    } catch {
+      // Skip unreadable files (for example binary blobs that cannot be decoded as text).
+    }
+  }
+
+  return {
+    insertions,
+    deletions: 0,
+  };
+}
+
+function countTextLines(content: string): number {
+  if (content.length === 0) {
+    return 0;
+  }
+
+  const lineCount = content.split("\n").length;
+  return content.endsWith("\n") ? lineCount - 1 : lineCount;
+}
+
+async function buildTrackedPatch(instance: GitInstance): Promise<string> {
   try {
     return await instance.diff(["--no-color", "--find-renames", "HEAD", "--"]);
   } catch {
@@ -301,10 +414,16 @@ export function startGitWatcher(cwd: string): Disposable {
     watcher = watch(cwd, { recursive: true }, (_eventType, filename) => {
       if (!filename) return;
 
-      // Skip .git internal files to avoid noise, but watch .git/index for staging changes
-      const filenameStr = filename.toString();
-      if (filenameStr.startsWith(".git/") && !filenameStr.includes("index")) {
-        return;
+      // Skip .git internals except .git/index. Ignore .git/index.lock to avoid refresh loops.
+      const filenameStr = filename.toString().replace(/\\/g, "/");
+      if (filenameStr.startsWith(".git/")) {
+        if (filenameStr.endsWith("/index.lock")) {
+          return;
+        }
+
+        if (filenameStr !== ".git/index") {
+          return;
+        }
       }
 
       scheduleRefresh();

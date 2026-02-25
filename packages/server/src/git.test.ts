@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import simpleGit from "simple-git";
-import { buildWorkingChangesSnapshot } from "./git";
+import { buildGitSummarySnapshot, buildWorkingChangesSnapshot } from "./git";
 
 describe("buildWorkingChangesSnapshot", () => {
   let tempRoot: string;
@@ -74,6 +74,42 @@ describe("buildWorkingChangesSnapshot", () => {
 
     expect(second.patch).toBe(first.patch);
     expect(second.files).toEqual(first.files);
+  });
+});
+
+describe("buildGitSummarySnapshot", () => {
+  let tempRoot: string;
+
+  beforeEach(async () => {
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), "modern-git-summary-"));
+  });
+
+  afterEach(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  test("returns tracked and untracked totals", async () => {
+    const { repoRoot } = await createRepoFixture(tempRoot);
+
+    await writeFile(path.join(repoRoot, "tracked.txt"), "updated\nline\n");
+    await writeFile(path.join(repoRoot, "new-file.txt"), "hello\nworld\n");
+
+    const summary = await buildGitSummarySnapshot({ cwd: repoRoot });
+
+    expect(summary.filesChanged).toBe(2);
+    expect(summary.insertions).toBe(4);
+    expect(summary.deletions).toBe(1);
+    expect(summary.current).toBeTruthy();
+  });
+
+  test("returns zeroes for clean repositories", async () => {
+    const { repoRoot } = await createRepoFixture(tempRoot);
+
+    const summary = await buildGitSummarySnapshot({ cwd: repoRoot });
+
+    expect(summary.filesChanged).toBe(0);
+    expect(summary.insertions).toBe(0);
+    expect(summary.deletions).toBe(0);
   });
 });
 

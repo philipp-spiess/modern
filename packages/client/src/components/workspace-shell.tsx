@@ -1,12 +1,15 @@
 import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@moderndev/server/src/state";
-import { Clipboard, Columns2, Ellipsis, PanelLeftClose, Rows3 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { Clipboard, Columns2, Ellipsis, GitCompare, PanelLeftClose, Rows3 } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toggleDiffStyle, useDiffStyleStore } from "../extensions/agent/diff-style-context";
 import AgentChatPanel from "../extensions/agent/chat";
+import { client, orpc } from "../lib/rpc";
 import { toggleSidebar, useSidebarVisible } from "../lib/sidebar-store";
 import { useHandle } from "../lib/use-handle";
 import { basename } from "../utils/path";
 import { Tabs } from "./tabs";
+import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,16 +24,26 @@ type WorkspaceShellProps = {
   activeThread: WorkspaceThreadSelection | null;
 };
 
+type GitSummary = {
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+};
+
 function ThreadHeader({
   title,
   threadPath,
   workspaceCwd,
   sidebarVisible,
+  summary,
+  onShowChanges,
 }: {
   title: string;
   threadPath: string | null;
   workspaceCwd: string;
   sidebarVisible: boolean;
+  summary: GitSummary;
+  onShowChanges: () => void;
 }) {
   const diffStyle = useDiffStyleStore();
 
@@ -57,33 +70,49 @@ function ThreadHeader({
         {title}
       </span>
 
-      {threadPath && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="-mr-2 flex size-7 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/5 hover:text-white/70 outline-hidden ring-0 focus:outline-hidden focus:ring-0 focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:outline-hidden data-[state=open]:ring-0"
-            >
-              <Ellipsis className="size-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="bottom">
-            <DropdownMenuItem onSelect={() => void navigator.clipboard.writeText(workspaceCwd)}>
-              <Clipboard className="size-4" />
-              Copy working directory
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void navigator.clipboard.writeText(threadPath)}>
-              <Clipboard className="size-4" />
-              Copy session ID
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => toggleDiffStyle()}>
-              {diffStyle === "split" ? <Rows3 className="size-4" /> : <Columns2 className="size-4" />}
-              {diffStyle === "split" ? "Stacked diffs" : "Split diffs"}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onShowChanges}
+          className="h-6 shrink-0 gap-1.5 border border-white/12 px-2 text-xs hover:bg-white/8"
+          aria-label={formatSummaryAriaLabel(summary)}
+          title={formatSummaryAriaLabel(summary)}
+        >
+          <GitCompare className="size-3 text-white/45" aria-hidden strokeWidth={1.75} />
+          <span className="font-medium text-emerald-400/80">+{summary.insertions}</span>
+          <span className="font-medium text-rose-400/80">-{summary.deletions}</span>
+        </Button>
+
+        {threadPath && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex size-7 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/5 hover:text-white/70 outline-hidden ring-0 focus:outline-hidden focus:ring-0 focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=open]:outline-hidden data-[state=open]:ring-0"
+              >
+                <Ellipsis className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="bottom">
+              <DropdownMenuItem onSelect={() => void navigator.clipboard.writeText(workspaceCwd)}>
+                <Clipboard className="size-4" />
+                Copy working directory
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void navigator.clipboard.writeText(threadPath)}>
+                <Clipboard className="size-4" />
+                Copy session ID
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => toggleDiffStyle()}>
+                {diffStyle === "split" ? <Rows3 className="size-4" /> : <Columns2 className="size-4" />}
+                {diffStyle === "split" ? "Stacked diffs" : "Split diffs"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </div>
   );
 }
@@ -99,6 +128,29 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
     unit: "percent",
     containerRef: shellContainerRef,
   });
+
+  const { data: gitSummaryData } = useSuspenseQuery(
+    orpc.git.summaryWatch.experimental_liveOptions({
+      context: { cache: true },
+      retry: true,
+    }),
+  );
+
+  const gitSummary = useMemo(
+    () => ({
+      filesChanged: gitSummaryData.filesChanged,
+      insertions: gitSummaryData.insertions,
+      deletions: gitSummaryData.deletions,
+    }),
+    [gitSummaryData.deletions, gitSummaryData.filesChanged, gitSummaryData.insertions],
+  );
+
+  const handleShowChanges = useCallback(() => {
+    void client.commands.run({
+      command: "review.showChanges",
+      cwd: workspaceCwd,
+    });
+  }, [workspaceCwd]);
 
   const [activeThreadPath, setActiveThreadPath] = useState<string | null>(() => {
     const existing = toExistingThread(normalizeThreadSelection(activeThread));
@@ -168,6 +220,8 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
             threadPath={activeThreadPath}
             workspaceCwd={workspaceCwd}
             sidebarVisible={sidebarVisible}
+            summary={gitSummary}
+            onShowChanges={handleShowChanges}
           />
 
           <div className="relative min-h-0 flex-1">
@@ -230,6 +284,11 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
       </div>
     </div>
   );
+}
+
+function formatSummaryAriaLabel(summary: GitSummary): string {
+  const fileLabel = summary.filesChanged === 1 ? "file" : "files";
+  return `${summary.filesChanged} ${fileLabel} changed, ${summary.insertions} insertion${summary.insertions === 1 ? "" : "s"}, ${summary.deletions} deletion${summary.deletions === 1 ? "" : "s"}`;
 }
 
 function normalizeThreadSelection(selection: WorkspaceThreadSelection | null): WorkspaceThreadSelection | null {

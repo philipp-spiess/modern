@@ -7,6 +7,7 @@ import { removeThreadsForWorkspace } from "./extensions/agent/threads";
 import { filesRouter } from "./extensions/files/router";
 import { fileIndex } from "./file-index";
 import {
+  buildGitSummarySnapshot,
   buildWorkingChangesSnapshot,
   gitStatusSignal,
   restore,
@@ -15,6 +16,7 @@ import {
   showWorktree,
   stage,
   unstage,
+  type GitSummarySnapshot,
   type WorkingChangesSnapshot,
 } from "./git";
 import { discoverRecentRepos } from "./recent-repos";
@@ -74,6 +76,32 @@ export const gitStatusWatch = os.handler(async function* (): AsyncGenerator<Stat
       }
       lastRev = gitStatusSignal.value.rev;
       yield gitStatusSignal.value.status;
+    }
+  } finally {
+    dispose();
+  }
+});
+
+export const gitSummaryWatch = os.handler(async function* (): AsyncGenerator<GitSummarySnapshot> {
+  // Subscribe BEFORE reading initial state to avoid race condition
+  let resolve: ((value: void) => void) | null = null;
+  const dispose = gitStatusSignal.subscribe(() => {
+    resolve?.(undefined);
+  });
+
+  try {
+    let lastRev = gitStatusSignal.value.rev;
+    yield await buildGitSummarySnapshot();
+
+    while (true) {
+      // Only wait if no change happened since last yield
+      if (gitStatusSignal.value.rev === lastRev) {
+        await new Promise<void>((r) => {
+          resolve = r;
+        });
+      }
+      lastRev = gitStatusSignal.value.rev;
+      yield await buildGitSummarySnapshot();
     }
   } finally {
     dispose();
@@ -403,6 +431,7 @@ export const panelsWatch = os
 type AppRouter = {
   git: {
     statusWatch: typeof gitStatusWatch;
+    summaryWatch: typeof gitSummaryWatch;
     workingChangesWatch: typeof gitWorkingChangesWatch;
     stage: typeof gitStage;
     unstage: typeof gitUnstage;
@@ -444,6 +473,7 @@ type AppRouter = {
 export const router: AppRouter = {
   git: {
     statusWatch: gitStatusWatch,
+    summaryWatch: gitSummaryWatch,
     workingChangesWatch: gitWorkingChangesWatch,
     stage: gitStage,
     unstage: gitUnstage,
