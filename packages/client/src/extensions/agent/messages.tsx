@@ -89,6 +89,39 @@ export const MessageList = memo(function MessageList({
 
   const visibleMessages = messages.filter((m) => m.role !== "toolResult");
 
+  // Group consecutive explore-only assistant messages across the message list
+  type ListEntry = { kind: "message"; message: AnyMessage } | { kind: "exploreGroup"; calls: ToolCall[] };
+  const entries: ListEntry[] = [];
+
+  for (const msg of visibleMessages) {
+    if (msg.role === "assistant" && isExploreOnlyAssistant(msg as AssistantMessage)) {
+      const calls = (msg as AssistantMessage).content.filter((b): b is ToolCall => b.type === "toolCall");
+      const last = entries[entries.length - 1];
+      if (last?.kind === "exploreGroup") {
+        last.calls.push(...calls);
+      } else {
+        entries.push({ kind: "exploreGroup", calls });
+      }
+    } else {
+      entries.push({ kind: "message", message: msg });
+    }
+  }
+
+  // Merge streaming message into the last explore group if applicable
+  let streamConsumed = false;
+  if (streamMessage?.role === "assistant" && isExploreOnlyAssistant(streamMessage as AssistantMessage)) {
+    const calls = (streamMessage as AssistantMessage).content.filter((b): b is ToolCall => b.type === "toolCall");
+    if (calls.length > 0) {
+      const last = entries[entries.length - 1];
+      if (last?.kind === "exploreGroup") {
+        last.calls.push(...calls);
+      } else {
+        entries.push({ kind: "exploreGroup", calls });
+      }
+      streamConsumed = true;
+    }
+  }
+
   return (
     <WorkerPoolContextProvider
       poolOptions={{
@@ -102,12 +135,22 @@ export const MessageList = memo(function MessageList({
       }}
     >
       <div className="flex flex-col gap-1">
-        {visibleMessages.map((msg, i) => (
-          <div key={i} className="content-visibility-auto">
-            <MessageView message={msg} resultMap={resultMap} isStreamingMsg={false} />
-          </div>
-        ))}
-        {streamMessage && <MessageView message={streamMessage} resultMap={resultMap} isStreamingMsg={isStreaming} />}
+        {entries.map((entry, i) =>
+          entry.kind === "exploreGroup" ? (
+            <ExploreGroupView
+              key={i}
+              calls={entry.calls}
+              isActive={isStreaming && streamConsumed && i === entries.length - 1}
+            />
+          ) : (
+            <div key={i} className="content-visibility-auto">
+              <MessageView message={entry.message} resultMap={resultMap} isStreamingMsg={false} />
+            </div>
+          ),
+        )}
+        {streamMessage && !streamConsumed && (
+          <MessageView message={streamMessage} resultMap={resultMap} isStreamingMsg={isStreaming} />
+        )}
       </div>
     </WorkerPoolContextProvider>
   );
@@ -235,16 +278,25 @@ function AssistantMessageView({
       } else {
         renderBlocks.push({ kind: "exploreGroup", calls: [item.call] });
       }
+    } else if (
+      renderBlocks[renderBlocks.length - 1]?.kind === "exploreGroup" &&
+      ((item.kind === "text" && !item.text.trim()) || item.kind === "thinking")
+    ) {
+      // Skip empty text and thinking blocks between explore tools so they stay grouped
     } else {
       renderBlocks.push(item);
     }
   }
 
+  const hasExploreGroup = renderBlocks.some((b) => b.kind === "exploreGroup");
+
   return (
     <Message from="assistant" className="py-2">
-      <MessageContent className="w-full!">
+      <MessageContent className={hasExploreGroup ? "w-full!" : undefined}>
         {renderBlocks.map((item, i) => {
           if (item.kind === "thinking") {
+            const isLastBlock = isStreaming && i === renderBlocks.length - 1;
+            if (!isLastBlock) return null;
             return <ThinkingView key={i} content={item.content} isStreaming={isStreaming} />;
           }
           if (item.kind === "text") {
@@ -691,6 +743,13 @@ function isExploreTool(call: ToolCall): boolean {
     return typeof command === "string" && isExploreCommand(command);
   }
   return false;
+}
+
+function isExploreOnlyAssistant(msg: AssistantMessage): boolean {
+  const toolCalls = msg.content.filter((b): b is ToolCall => b.type === "toolCall");
+  if (toolCalls.length === 0) return false;
+  if (!toolCalls.every((c) => isExploreTool(c))) return false;
+  return !msg.content.some((b) => b.type === "text" && b.text.trim());
 }
 
 function BashToolView({
