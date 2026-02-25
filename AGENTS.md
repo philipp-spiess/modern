@@ -15,12 +15,17 @@ The repo is a Bun workspace wrapped by Tauri 2. React UI code lives in `packages
 
 ## Coding Style & Naming Conventions
 
-Stick to TypeScript + JSX with 2-space indentation and sorted ES imports. Component files stay lowercase (`app.tsx`, `sidebar.tsx`) while exported symbols are PascalCase. Helpers in `lib/` use camelCase names; Tailwind utilities live inline, with global overrides in `main.css`. Prefer Suspense-powered data fetching (e.g. `useSuspenseQuery`) over `useQuery` to avoid intermediate loading spinners. Rely on `oxfmt` and `oxlint`; do not suppress warnings. Rust modules in `src-tauri/src` follow `rustfmt` conventions and snake_case functions.
+- Stick to TypeScript + JSX with 2-space indentation and sorted ES imports.
+- Prefer bun-specific APIs in the server code.
+- Prefer Suspense-powered data fetching (e.g. `useSuspenseQuery`) over `useQuery` to avoid intermediate loading spinners.
+- Rely on `oxfmt` and `oxlint`; do not suppress warnings.
+- Rust modules in `src-tauri/src` follow `rustfmt` conventions and snake_case functions.
+- It's okay to break backward compatibility.
 
 ## Extensions Architecture
 
 - **Runtime overview**: `packages/server/src/extension.ts` isolates each extension in `AsyncLocalStorage`, exposing the `diffs` API. `diffs.window.createReactPanel` bootstraps client modules (relative to `packages/client/src`) inside desktop panels, `diffs.commands.registerCommand` bridges command invocations back into the Bun process, and `diffs.workspace.cwd`/`diffs.storage` give extensions scoped filesystem and persistence access.
-- **Extension docs**: see `docs/extensions/README.md` for a single-page guide (setup, API quick reference, and examples). Keep it in sync when changing `packages/server/src/extension.ts` or extension wiring.
+- **Extension docs**: see `docs/extensions.md` for a single-page guide (setup, API quick reference, and examples). Keep it in sync when changing `packages/server/src/extension.ts` or extension wiring.
 
 ## Testing Guidelines
 

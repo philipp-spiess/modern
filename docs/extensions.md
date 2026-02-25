@@ -6,11 +6,10 @@ This page documents the extension runtime in `packages/server/src/extension.ts`.
 
 ## Runtime model
 
-- Extensions are activated **per workspace**.
+- Extensions are activated **per project**.
 - Define extensions with `createExtension(...)`.
-- Use `modern` for runtime APIs: `commands`, `window`, `workspace`, `storage`.
-- `diffs` is currently a backwards-compatible alias of `modern`.
-- Accessing `modern`/`diffs` outside an active extension context throws.
+- Use `modern` for runtime APIs: `commands`, `window`, `project`, `workspace`, `storage`.
+- Accessing `modern` outside an active extension context throws.
 
 ---
 
@@ -95,13 +94,13 @@ Notes:
 
 - `command` must be a non-empty string.
 - The same command id cannot be owned by different extensions.
-- Disposing unregisters the command for the current workspace.
+- Disposing unregisters the command for the current project.
 
 ### `modern.window`
 
 #### `createReactPanel(viewType, module, title, icon?, iconColor?) => PanelHandle`
 
-Creates a tab/panel in the current workspace.
+Creates a tab/panel in the current project.
 
 `PanelHandle`:
 
@@ -111,9 +110,14 @@ Creates a tab/panel in the current workspace.
 
 Updating mutable fields syncs panel state to the UI.
 
+### `modern.project`
+
+- `cwd: string` — resolved project root path.
+- `registerWorkspaceProvider(provider)` — registers a workspace provider for this project.
+
 ### `modern.workspace`
 
-- `cwd: string` — resolved workspace path.
+- `cwd: string` — resolved execution workspace path.
 - `openTextDocument(uriOrPath)` — reads a file and returns `TextDocumentHandle`.
 
 `TextDocumentHandle`:
@@ -126,13 +130,13 @@ Updating mutable fields syncs panel state to the UI.
 
 ### `modern.storage`
 
-Workspace + extension scoped key/value store:
+Project + extension scoped key/value store:
 
 - `keys()`
 - `get<T>(key, defaultValue?)`
 - `set<T>(key, value)`
 
-Data is isolated per extension/workspace pair.
+Data is isolated per extension/project pair.
 
 ### Host-side helpers (outside `modern`)
 
@@ -184,7 +188,7 @@ function openThread(threadPath: string) {
 }
 ```
 
-### Persist workspace-local state
+### Persist project-local state
 
 ```ts
 const visits = modern.storage.get<number>("visits", 0) ?? 0;
