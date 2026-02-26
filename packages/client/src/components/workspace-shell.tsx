@@ -40,6 +40,7 @@ function ThreadHeader({
   onShowChanges,
   onOpenTerminal,
   toggleSidebarShortcut,
+  openTerminalShortcut,
 }: {
   title: string;
   threadPath: string | null;
@@ -49,6 +50,7 @@ function ThreadHeader({
   onShowChanges: () => void;
   onOpenTerminal: () => void;
   toggleSidebarShortcut: string;
+  openTerminalShortcut: string;
 }) {
   return (
     <div
@@ -95,8 +97,11 @@ function ThreadHeader({
               <SquareTerminal className="size-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={8}>
-            New Terminal
+          <TooltipContent side="bottom" sideOffset={8} className="flex items-center gap-2">
+            <span>New Terminal</span>
+            <span className="shrink-0 rounded border px-1.5 py-0.25 text-[10px] uppercase tracking-wide opacity-80">
+              {openTerminalShortcut}
+            </span>
           </TooltipContent>
         </Tooltip>
 
@@ -172,6 +177,11 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
   const toggleSidebarShortcut = useMemo(() => {
     const commands = (commandsQuery.data as readonly RegisteredCommand[]) ?? [];
     return commands.find((entry) => entry.command === "view.toggleSidebar")?.defaultKeybinding?.key ?? "cmd+b";
+  }, [commandsQuery.data]);
+
+  const openTerminalShortcut = useMemo(() => {
+    const commands = (commandsQuery.data as readonly RegisteredCommand[]) ?? [];
+    return commands.find((entry) => entry.command === "terminal.new")?.defaultKeybinding?.key ?? "cmd+t";
   }, [commandsQuery.data]);
 
   const gitSummary = useMemo(
@@ -294,6 +304,7 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
             onShowChanges={handleShowChanges}
             onOpenTerminal={handleOpenTerminal}
             toggleSidebarShortcut={toggleSidebarShortcut}
+            openTerminalShortcut={openTerminalShortcut}
           />
 
           <div className="relative min-h-0 flex-1">
