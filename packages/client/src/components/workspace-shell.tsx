@@ -1,6 +1,6 @@
 import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@moderndev/server/src/state";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Clipboard, Ellipsis, GitCompare, PanelLeftClose } from "lucide-react";
+import { Clipboard, Ellipsis, GitCompare, PanelLeftOpen } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AgentChatPanel from "../extensions/agent/chat";
 import { client, orpc } from "../lib/rpc";
@@ -54,7 +54,7 @@ function ThreadHeader({
           className="mr-2 flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
           aria-label="Expand sidebar"
         >
-          <PanelLeftClose className="size-3.5" />
+          <PanelLeftOpen className="size-3.5" />
         </button>
       )}
       <span data-tauri-drag-region className="min-w-0 flex-1 truncate">

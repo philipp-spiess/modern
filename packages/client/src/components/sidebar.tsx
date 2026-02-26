@@ -16,7 +16,7 @@ import {
   FolderOpenIcon,
   FolderPlusIcon,
   LoaderCircle,
-  PanelLeftOpen,
+  PanelLeftClose,
   SquarePen,
   Trash2,
 } from "lucide-react";
@@ -116,7 +116,7 @@ function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: Sideb
           className="mr-1.75 flex size-6 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
           aria-label="Collapse sidebar"
         >
-          <PanelLeftOpen className="size-3.5" />
+          <PanelLeftClose className="size-3.5" />
         </button>
       </div>
       <div className="flex min-h-0 flex-1 min-w-0 select-none flex-col overflow-y-auto p-2 pt-0 gap-4">
