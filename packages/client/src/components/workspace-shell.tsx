@@ -1,8 +1,7 @@
 import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@moderndev/server/src/state";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Clipboard, Columns2, Ellipsis, GitCompare, PanelLeftClose, Rows3 } from "lucide-react";
+import { Clipboard, Ellipsis, GitCompare, PanelLeftClose } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toggleDiffStyle, useDiffStyleStore } from "../extensions/agent/diff-style-context";
 import AgentChatPanel from "../extensions/agent/chat";
 import { client, orpc } from "../lib/rpc";
 import { toggleSidebar, useSidebarVisible } from "../lib/sidebar-store";
@@ -10,13 +9,7 @@ import { useHandle } from "../lib/use-handle";
 import { basename } from "../utils/path";
 import { Tabs } from "./tabs";
 import { Button } from "./ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
 type WorkspaceShellProps = {
   active: boolean;
@@ -45,8 +38,6 @@ function ThreadHeader({
   summary: GitSummary;
   onShowChanges: () => void;
 }) {
-  const diffStyle = useDiffStyleStore();
-
   return (
     <div
       data-tauri-drag-region
@@ -105,11 +96,6 @@ function ThreadHeader({
               <DropdownMenuItem onSelect={() => void navigator.clipboard.writeText(threadPath)}>
                 <Clipboard className="size-4" />
                 Copy session ID
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => toggleDiffStyle()}>
-                {diffStyle === "split" ? <Rows3 className="size-4" /> : <Columns2 className="size-4" />}
-                {diffStyle === "split" ? "Stacked diffs" : "Split diffs"}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
