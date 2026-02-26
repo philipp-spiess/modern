@@ -35,7 +35,7 @@
         {
           "identifier": "draggable-window",
           "windows": ["*"],
-          "permissions": ["core:window:allow-start-dragging"]
+          "permissions": ["core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize"]
         },
         {
           "identifier": "rpc-events",
