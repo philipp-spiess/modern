@@ -148,10 +148,29 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
   );
 
   const handleShowChanges = useCallback(() => {
-    void client.commands.run({
-      command: "review.showChanges",
-      workspaceCwd,
-    });
+    void (async () => {
+      try {
+        const panels = await client.panels.state();
+        const openChangesPanels = panels.filter(
+          (panel) => panel.viewType === "review.diff" && (!panel.workspaceCwd || panel.workspaceCwd === workspaceCwd),
+        );
+
+        if (openChangesPanels.length > 0) {
+          await Promise.all(
+            openChangesPanels.map((panel) => client.tabs.close({ tabId: panel.id, cwd: workspaceCwd })),
+          );
+          return;
+        }
+
+        await client.commands.run({
+          command: "review.showChanges",
+          projectCwd: workspaceCwd,
+          workspaceCwd,
+        });
+      } catch (error) {
+        console.error("Failed to toggle changes panel", error);
+      }
+    })();
   }, [workspaceCwd]);
 
   const [activeThreadPath, setActiveThreadPath] = useState<string | null>(() => {
