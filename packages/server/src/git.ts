@@ -405,6 +405,32 @@ function joinPatches(parts: readonly string[]): string {
   return `${normalized.join("\n\n")}\n`;
 }
 
+// Core metadata files that indicate ref/index updates when watcher backends
+// coalesce or drop intermediate events.
+const GIT_METADATA_REFRESH_PATHS = new Set([".git/index", ".git/HEAD", ".git/packed-refs"]);
+
+function shouldRefreshFromWatchPath(filename: string): boolean {
+  const normalized = filename.replace(/\\/g, "/");
+
+  if (!normalized.startsWith(".git/")) {
+    return true;
+  }
+
+  if (normalized.endsWith(".lock")) {
+    return false;
+  }
+
+  if (GIT_METADATA_REFRESH_PATHS.has(normalized)) {
+    return true;
+  }
+
+  if (normalized.startsWith(".git/refs/") || normalized.startsWith(".git/logs/")) {
+    return true;
+  }
+
+  return false;
+}
+
 export function startGitWatcher(cwd: string): Disposable {
   // Do an initial refresh
   void refreshGitStatus();
@@ -414,16 +440,8 @@ export function startGitWatcher(cwd: string): Disposable {
     watcher = watch(cwd, { recursive: true }, (_eventType, filename) => {
       if (!filename) return;
 
-      // Skip .git internals except .git/index. Ignore .git/index.lock to avoid refresh loops.
-      const filenameStr = filename.toString().replace(/\\/g, "/");
-      if (filenameStr.startsWith(".git/")) {
-        if (filenameStr.endsWith("/index.lock")) {
-          return;
-        }
-
-        if (filenameStr !== ".git/index") {
-          return;
-        }
+      if (!shouldRefreshFromWatchPath(filename.toString())) {
+        return;
       }
 
       scheduleRefresh();
