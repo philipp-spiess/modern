@@ -136,7 +136,7 @@ function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: Sideb
 
         <section className="p-1 w-full">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs text-white/50">Threads</h2>
+            <h2 className="text-xs text-white/50">Projects</h2>
             <div className="flex items-center gap-0.5">
               <Button onClick={() => void onAddProject()} variant="ghost" className="-mr-1.25 size-6 p-0 text-white/50">
                 <FolderPlusIcon className="size-3.5" />
