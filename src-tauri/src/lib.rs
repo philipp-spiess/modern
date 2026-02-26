@@ -99,6 +99,73 @@ fn get_cwd() -> Result<String, String> {
         .map(|path| path.to_string_lossy().to_string())
 }
 
+#[cfg(target_os = "macos")]
+const TRAFFIC_LIGHT_X: f64 = 20.0;
+#[cfg(target_os = "macos")]
+const TRAFFIC_LIGHT_Y_SEQUOIA: f64 = 26.0;
+#[cfg(target_os = "macos")]
+const TRAFFIC_LIGHT_Y_TAHOE: f64 = 30.0;
+#[cfg(target_os = "macos")]
+const TAHOE_MAJOR_VERSION: isize = 26;
+
+#[cfg(target_os = "macos")]
+fn macos_traffic_light_y() -> f64 {
+    use objc2_foundation::NSProcessInfo;
+
+    let os_version = NSProcessInfo::processInfo().operatingSystemVersion();
+    if os_version.majorVersion >= TAHOE_MAJOR_VERSION {
+        TRAFFIC_LIGHT_Y_TAHOE
+    } else {
+        TRAFFIC_LIGHT_Y_SEQUOIA
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn apply_traffic_light_inset(window: &objc2_app_kit::NSWindow, x: f64, y: f64) {
+    use objc2_app_kit::{NSView, NSWindowButton};
+
+    let Some(close) = window.standardWindowButton(NSWindowButton::CloseButton) else {
+        return;
+    };
+    let Some(miniaturize) = window.standardWindowButton(NSWindowButton::MiniaturizeButton) else {
+        return;
+    };
+    let Some(zoom) = window.standardWindowButton(NSWindowButton::ZoomButton) else {
+        return;
+    };
+
+    let Some(title_bar_container_view) = unsafe { close.superview() }
+        .and_then(|title_bar_view| unsafe { title_bar_view.superview() })
+    else {
+        return;
+    };
+
+    let close_rect = NSView::frame(&close);
+    let title_bar_frame_height = close_rect.size.height + y;
+
+    let mut title_bar_rect = NSView::frame(&title_bar_container_view);
+    title_bar_rect.size.height = title_bar_frame_height;
+    title_bar_rect.origin.y = window.frame().size.height - title_bar_frame_height;
+    title_bar_container_view.setFrame(title_bar_rect);
+
+    let space_between = NSView::frame(&miniaturize).origin.x - close_rect.origin.x;
+    for (index, button) in [close, miniaturize, zoom].into_iter().enumerate() {
+        let mut rect = NSView::frame(&button);
+        rect.origin.x = x + (index as f64 * space_between);
+        button.setFrameOrigin(rect.origin);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_traffic_light_position(window: &tauri::WebviewWindow, y: f64) {
+    if let Ok(ns_window_ptr) = window.ns_window() {
+        unsafe {
+            let ns_window_ref = &*(ns_window_ptr as *const objc2_app_kit::NSWindow);
+            apply_traffic_light_inset(ns_window_ref, TRAFFIC_LIGHT_X, y);
+        }
+    }
+}
+
 pub fn run() {
     let pty_manager: terminal::SharedManager = Arc::default();
 
@@ -111,24 +178,45 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {
-                use objc2_app_kit::{NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSWindow};
+                use objc2_app_kit::{
+                    NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSWindow,
+                };
                 use objc2_foundation::MainThreadMarker;
-                use window_vibrancy::{apply_liquid_glass, apply_vibrancy, NSGlassEffectViewStyle, NSVisualEffectMaterial, NSVisualEffectState};
+                use window_vibrancy::{
+                    apply_liquid_glass, apply_vibrancy, NSGlassEffectViewStyle,
+                    NSVisualEffectMaterial, NSVisualEffectState,
+                };
 
                 if let Some(window) = app.get_webview_window("main") {
                     let _mtm = MainThreadMarker::new().expect("must be on main thread");
+                    let traffic_light_y = macos_traffic_light_y();
+                    apply_traffic_light_position(&window, traffic_light_y);
+
+                    let window_for_resize = window.clone();
+                    window.on_window_event(move |event| {
+                        if matches!(event, tauri::WindowEvent::Resized(_)) {
+                            apply_traffic_light_position(&window_for_resize, traffic_light_y);
+                        }
+                    });
 
                     // Force dark appearance
                     if let Ok(ns_window_ptr) = window.ns_window() {
                         unsafe {
                             // We cast to *const NSWindow and rely on objc2 references
                             let ns_window_ref = &*(ns_window_ptr as *const NSWindow);
-                            let appearance = NSAppearance::appearanceNamed(NSAppearanceNameDarkAqua)
-                                .expect("failed to get dark appearance");
+
+                            let appearance =
+                                NSAppearance::appearanceNamed(NSAppearanceNameDarkAqua)
+                                    .expect("failed to get dark appearance");
                             ns_window_ref.setAppearance(Some(&appearance));
                             // Apply liquid glass effect (macOS 26+) or fall back to vibrancy
                             ns_window_ref.setOpaque(false);
-                            if let Err(e) = apply_liquid_glass(&window, NSGlassEffectViewStyle::Sidebar, None, None) {
+                            if let Err(e) = apply_liquid_glass(
+                                &window,
+                                NSGlassEffectViewStyle::Sidebar,
+                                None,
+                                None,
+                            ) {
                                 eprintln!("Liquid glass not available: {e}");
                                 // Fall back to NSVisualEffectView vibrancy (macOS 10.14+)
                                 if let Err(e2) = apply_vibrancy(
@@ -137,7 +225,9 @@ pub fn run() {
                                     Some(NSVisualEffectState::Active),
                                     None,
                                 ) {
-                                    eprintln!("Vibrancy fallback also failed: {e2}, making window opaque");
+                                    eprintln!(
+                                        "Vibrancy fallback also failed: {e2}, making window opaque"
+                                    );
                                     ns_window_ref.setOpaque(true);
                                     ns_window_ref.setBackgroundColor(Some(
                                         &objc2_app_kit::NSColor::colorWithSRGBRed_green_blue_alpha(
@@ -293,7 +383,10 @@ fn spawn_dev_server(handle: &tauri::AppHandle) {
                     eprintln!("Server error: {err}");
                 }
                 CommandEvent::Terminated(payload) => {
-                    eprintln!("Dev server terminated with code: {:?}. Restarting...", payload.code);
+                    eprintln!(
+                        "Dev server terminated with code: {:?}. Restarting...",
+                        payload.code
+                    );
                     spawn_dev_server(&handle);
                     break;
                 }
@@ -306,7 +399,13 @@ fn spawn_dev_server(handle: &tauri::AppHandle) {
 fn extract_server_info(line: &str) -> Option<ServerInfo> {
     let maybe_json = line.strip_prefix("Server: ").unwrap_or(line);
     let json: Value = serde_json::from_str(maybe_json).ok()?;
-    let port = json.get("port").and_then(|p| p.as_u64()).and_then(|p| u16::try_from(p).ok())?;
-    let token = json.get("token").and_then(|t| t.as_str()).map(String::from)?;
+    let port = json
+        .get("port")
+        .and_then(|p| p.as_u64())
+        .and_then(|p| u16::try_from(p).ok())?;
+    let token = json
+        .get("token")
+        .and_then(|t| t.as_str())
+        .map(String::from)?;
     Some(ServerInfo { port, token })
 }
