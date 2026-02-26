@@ -6,6 +6,14 @@ import tauriBrowserProxy from "vite-plugin-tauri-in-the-browser";
 
 const host = process.env.TAURI_DEV_HOST;
 
+function resolvePort(value: string | undefined, fallback: number): number {
+  const port = Number.parseInt(value ?? "", 10);
+  return Number.isInteger(port) && port > 0 && port <= 65_535 ? port : fallback;
+}
+
+const devPort = resolvePort(process.env.MODERN_DEV_PORT, 1420);
+const hmrPort = resolvePort(process.env.MODERN_HMR_PORT, devPort + 1);
+
 // Tauri serves assets via tauri:// custom protocol which doesn't set CORS
 // headers. Vite 7 hardcodes crossorigin on injected script/link tags, causing
 // WKWebView to silently block them. This plugin strips the attribute.
@@ -34,14 +42,14 @@ export default defineConfig(async () => ({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    port: devPort,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: hmrPort,
         }
       : undefined,
     watch: {

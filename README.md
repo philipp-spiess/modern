@@ -57,6 +57,9 @@ src-tauri/     — Tauri shell (Rust)
 # Start dev (Tauri + Vite + Bun server)
 bun dev
 
+# Optional: pin the dev web port (default auto-picks from 1420+)
+MODERN_DEV_PORT=1500 bun dev
+
 # Type check, lint, format
 bun run check
 

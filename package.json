@@ -7,7 +7,7 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "bun scripts/dev.ts",
     "lint": "oxlint --fix --deny-warnings .",
     "format": "concurrently -n fmt,lint 'oxfmt .' 'bun run lint'",
     "check": "concurrently -n fmt,lint,ts 'oxfmt --check .' 'bun run lint' 'bun run --workspaces check'",
