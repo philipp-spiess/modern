@@ -104,16 +104,23 @@ const TRAFFIC_LIGHT_X: f64 = 20.0;
 #[cfg(target_os = "macos")]
 const TRAFFIC_LIGHT_Y_SEQUOIA: f64 = 26.0;
 #[cfg(target_os = "macos")]
-const TRAFFIC_LIGHT_Y_TAHOE: f64 = 30.0;
+const TRAFFIC_LIGHT_Y_TAHOE: f64 = 28.0;
 #[cfg(target_os = "macos")]
 const TAHOE_MAJOR_VERSION: isize = 26;
 
 #[cfg(target_os = "macos")]
-fn macos_traffic_light_y() -> f64 {
+fn is_tahoe_or_newer() -> bool {
     use objc2_foundation::NSProcessInfo;
 
-    let os_version = NSProcessInfo::processInfo().operatingSystemVersion();
-    if os_version.majorVersion >= TAHOE_MAJOR_VERSION {
+    NSProcessInfo::processInfo()
+        .operatingSystemVersion()
+        .majorVersion
+        >= TAHOE_MAJOR_VERSION
+}
+
+#[cfg(target_os = "macos")]
+fn macos_traffic_light_y() -> f64 {
+    if is_tahoe_or_newer() {
         TRAFFIC_LIGHT_Y_TAHOE
     } else {
         TRAFFIC_LIGHT_Y_SEQUOIA
@@ -148,10 +155,18 @@ unsafe fn apply_traffic_light_inset(window: &objc2_app_kit::NSWindow, x: f64, y:
     title_bar_rect.origin.y = window.frame().size.height - title_bar_frame_height;
     title_bar_container_view.setFrame(title_bar_rect);
 
+    static BASE_TRAFFIC_LIGHT_CLOSE_Y: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+    let base_close_y = *BASE_TRAFFIC_LIGHT_CLOSE_Y.get_or_init(|| close_rect.origin.y);
+
     let space_between = NSView::frame(&miniaturize).origin.x - close_rect.origin.x;
     for (index, button) in [close, miniaturize, zoom].into_iter().enumerate() {
         let mut rect = NSView::frame(&button);
         rect.origin.x = x + (index as f64 * space_between);
+
+        if is_tahoe_or_newer() {
+            rect.origin.y = base_close_y - (y - TRAFFIC_LIGHT_Y_SEQUOIA);
+        }
+
         button.setFrameOrigin(rect.origin);
     }
 }
@@ -194,7 +209,12 @@ pub fn run() {
 
                     let window_for_resize = window.clone();
                     window.on_window_event(move |event| {
-                        if matches!(event, tauri::WindowEvent::Resized(_)) {
+                        if matches!(
+                            event,
+                            tauri::WindowEvent::Resized(_)
+                                | tauri::WindowEvent::ThemeChanged(_)
+                                | tauri::WindowEvent::Focused(_)
+                        ) {
                             apply_traffic_light_position(&window_for_resize, traffic_light_y);
                         }
                     });
@@ -238,6 +258,8 @@ pub fn run() {
                             }
                         }
                     }
+
+                    apply_traffic_light_position(&window, traffic_light_y);
                 }
             }
 
