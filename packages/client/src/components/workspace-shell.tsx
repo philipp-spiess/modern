@@ -10,6 +10,7 @@ import { basename } from "../utils/path";
 import { Tabs } from "./tabs";
 import { Button } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 type WorkspaceShellProps = {
   active: boolean;
@@ -23,6 +24,13 @@ type GitSummary = {
   deletions: number;
 };
 
+type RegisteredCommand = {
+  command: string;
+  defaultKeybinding?: {
+    key: string;
+  };
+};
+
 function ThreadHeader({
   title,
   threadPath,
@@ -30,6 +38,7 @@ function ThreadHeader({
   sidebarVisible,
   summary,
   onShowChanges,
+  toggleSidebarShortcut,
 }: {
   title: string;
   threadPath: string | null;
@@ -37,6 +46,7 @@ function ThreadHeader({
   sidebarVisible: boolean;
   summary: GitSummary;
   onShowChanges: () => void;
+  toggleSidebarShortcut: string;
 }) {
   return (
     <div
@@ -48,14 +58,24 @@ function ThreadHeader({
       }
     >
       {!sidebarVisible && (
-        <button
-          type="button"
-          onClick={() => toggleSidebar()}
-          className="mr-2 flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
-          aria-label="Expand sidebar"
-        >
-          <PanelLeftOpen className="size-3.5" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => toggleSidebar()}
+              className="mr-2 flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
+              aria-label="Expand sidebar"
+            >
+              <PanelLeftOpen className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8} className="flex items-center gap-2">
+            <span>Toggle Sidebar</span>
+            <span className="shrink-0 rounded border px-1.5 py-0.25 text-[10px] uppercase tracking-wide opacity-80">
+              {toggleSidebarShortcut}
+            </span>
+          </TooltipContent>
+        </Tooltip>
       )}
       <span data-tauri-drag-region className="min-w-0 flex-1 truncate">
         {title}
@@ -123,6 +143,18 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
       retry: true,
     }),
   );
+
+  const commandsQuery = useSuspenseQuery(
+    orpc.commands.list.experimental_liveOptions({
+      context: { cache: true },
+      retry: true,
+    }),
+  );
+
+  const toggleSidebarShortcut = useMemo(() => {
+    const commands = (commandsQuery.data as readonly RegisteredCommand[]) ?? [];
+    return commands.find((entry) => entry.command === "view.toggleSidebar")?.defaultKeybinding?.key ?? "cmd+b";
+  }, [commandsQuery.data]);
 
   const gitSummary = useMemo(
     () => ({
@@ -229,6 +261,7 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
             sidebarVisible={sidebarVisible}
             summary={gitSummary}
             onShowChanges={handleShowChanges}
+            toggleSidebarShortcut={toggleSidebarShortcut}
           />
 
           <div className="relative min-h-0 flex-1">

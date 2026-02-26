@@ -5,6 +5,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { type ThreadSummary, type WorkspaceThreads } from "@moderndev/server/src/extensions/agent/threads";
 import type { WorkspaceThreadSelection } from "@moderndev/server/src/state";
@@ -42,6 +43,13 @@ type SidebarProps = {
   expandedByProject: Record<string, boolean>;
 };
 
+type RegisteredCommand = {
+  command: string;
+  defaultKeybinding?: {
+    key: string;
+  };
+};
+
 function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: SidebarProps) {
   const workspaceThreadsQuery = useSuspenseQuery({
     ...orpc.agent.threadsActivityWatch.experimental_liveOptions({
@@ -53,6 +61,18 @@ function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: Sideb
     }),
     queryKey: ["agent", "threadsActivityWatch", projects.join("|")],
   });
+
+  const commandsQuery = useSuspenseQuery(
+    orpc.commands.list.experimental_liveOptions({
+      context: { cache: true },
+      retry: true,
+    }),
+  );
+
+  const toggleSidebarShortcut = useMemo(() => {
+    const commands = (commandsQuery.data as readonly RegisteredCommand[]) ?? [];
+    return commands.find((entry) => entry.command === "view.toggleSidebar")?.defaultKeybinding?.key ?? "cmd+b";
+  }, [commandsQuery.data]);
 
   const threadsByWorkspace = useMemo(() => {
     const groups = (workspaceThreadsQuery.data?.projects as WorkspaceThreads[] | undefined) ?? [];
@@ -110,14 +130,24 @@ function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: Sideb
   return (
     <div className="flex max-h-screen h-full flex-col p-2 pr-1">
       <div data-tauri-drag-region className="h-10 shrink-0 flex items-center justify-end">
-        <button
-          type="button"
-          onClick={() => toggleSidebar()}
-          className="mr-1.75 flex size-6 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
-          aria-label="Collapse sidebar"
-        >
-          <PanelLeftClose className="size-3.5" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => toggleSidebar()}
+              className="mr-1.75 flex size-6 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-300"
+              aria-label="Collapse sidebar"
+            >
+              <PanelLeftClose className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8} className="flex items-center gap-2">
+            <span>Toggle Sidebar</span>
+            <span className="shrink-0 rounded border px-1.5 py-0.25 text-[10px] uppercase tracking-wide opacity-80">
+              {toggleSidebarShortcut}
+            </span>
+          </TooltipContent>
+        </Tooltip>
       </div>
       <div className="flex min-h-0 flex-1 min-w-0 select-none flex-col overflow-y-auto p-2 pt-0 gap-4">
         <div className="p-1 w-full">
