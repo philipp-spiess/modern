@@ -1,6 +1,6 @@
 import type { WorkspaceExistingThreadSelection, WorkspaceThreadSelection } from "@moderndev/server/src/state";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Clipboard, Ellipsis, GitCompare, PanelLeftOpen } from "lucide-react";
+import { Clipboard, Ellipsis, GitCompare, PanelLeftOpen, SquareTerminal } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AgentChatPanel from "../extensions/agent/chat";
 import { client, orpc } from "../lib/rpc";
@@ -38,6 +38,7 @@ function ThreadHeader({
   sidebarVisible,
   summary,
   onShowChanges,
+  onOpenTerminal,
   toggleSidebarShortcut,
 }: {
   title: string;
@@ -46,6 +47,7 @@ function ThreadHeader({
   sidebarVisible: boolean;
   summary: GitSummary;
   onShowChanges: () => void;
+  onOpenTerminal: () => void;
   toggleSidebarShortcut: string;
 }) {
   return (
@@ -82,6 +84,22 @@ function ThreadHeader({
       </span>
 
       <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onOpenTerminal}
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/5 hover:text-white/70"
+              aria-label="New terminal"
+            >
+              <SquareTerminal className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8}>
+            New Terminal
+          </TooltipContent>
+        </Tooltip>
+
         {summary.filesChanged > 0 ? (
           <Button
             type="button"
@@ -191,6 +209,19 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
     })();
   }, [workspaceCwd]);
 
+  const handleOpenTerminal = useCallback(() => {
+    void client.commands
+      .run({
+        command: "terminal.new",
+        args: [workspaceCwd],
+        projectCwd: workspaceCwd,
+        workspaceCwd,
+      })
+      .catch((error) => {
+        console.error("Failed to open terminal", error);
+      });
+  }, [workspaceCwd]);
+
   const [activeThreadPath, setActiveThreadPath] = useState<string | null>(() => {
     const existing = toExistingThread(normalizeThreadSelection(activeThread));
     return existing?.threadPath ?? null;
@@ -261,6 +292,7 @@ function WorkspaceShell({ active, workspaceCwd, activeThread }: WorkspaceShellPr
             sidebarVisible={sidebarVisible}
             summary={gitSummary}
             onShowChanges={handleShowChanges}
+            onOpenTerminal={handleOpenTerminal}
             toggleSidebarShortcut={toggleSidebarShortcut}
           />
 
