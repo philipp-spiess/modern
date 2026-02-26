@@ -45,3 +45,36 @@ Prefer Bun’s `bun test` with colocated specs (`*.test.ts`) when adding unit te
 ## UI testing
 
 You can connect to the frontend via Chrome DevTools MCP server at http://localhost:1420/. To do this, first start the Tauri dev app in the background via `bun dev`. Once the app is running, you can connect to the frontend via the MCP server.
+
+## Cursor Cloud specific instructions
+
+### Tauri shell limitation on Linux
+
+The Tauri Rust shell (`src-tauri`) cannot compile on Linux because `Cargo.toml` lists `objc2`, `objc2-app-kit`, and `objc2-foundation` as unconditional dependencies (they are macOS-only). The `bun run dev` command (which wraps `tauri dev`) will fail during `cargo build`. This does **not** affect TypeScript code, tests, lint, or type-checking.
+
+### Running services without Tauri
+
+Start the Bun backend and Vite frontend independently:
+
+```bash
+# Bun oRPC server (prints JSON with port and token to stdout)
+PORT=3000 bun run --cwd packages/server dev
+
+# Vite React frontend (serves on http://localhost:1420)
+bun --cwd packages/client dev
+```
+
+The server auto-shuts down after 60 seconds with no WebSocket connections. Keep a client connected or restart as needed.
+
+The frontend in a browser renders a dark canvas but cannot fully function without the Tauri shell acting as the "leader" for the `vite-plugin-tauri-in-the-browser` proxy. For testing TypeScript/server changes, use `bun test` and `bun run check` which both work fully.
+
+### Key commands (see README.md for full list)
+
+| Task                    | Command                               |
+| ----------------------- | ------------------------------------- |
+| Install deps            | `bun install`                         |
+| Lint (auto-fix)         | `bun run lint`                        |
+| Format                  | `bun run format`                      |
+| Type-check + lint + fmt | `bun run check`                       |
+| Run tests               | `bun test`                            |
+| Build server sidecar    | `bun run --cwd packages/server build` |
