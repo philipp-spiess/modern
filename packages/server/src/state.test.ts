@@ -8,8 +8,10 @@ import {
   closeTab,
   detachPanel,
   getWorkspaceActiveThread,
+  listOpenProjects,
   openWorkspace,
   Panel,
+  registerThreadWorkspace,
   removeWorkspace,
   setWorkspaceActiveThread,
   state,
@@ -296,6 +298,27 @@ describe("openWorkspace", () => {
 
     expect(state.workspaces.value.active).toBe(path.resolve(workspace));
     expect(state.workspaces.value.open).toContain(path.resolve(workspace));
+  });
+
+  test("lists only the project root when managed workspaces are open", async () => {
+    const projectWorkspace = await mkdtemp(path.join(os.tmpdir(), "modern-project-root-"));
+    const managedWorkspace = await mkdtemp(path.join(os.tmpdir(), "modern-managed-workspace-"));
+    createdPaths.push(projectWorkspace, managedWorkspace);
+
+    await mkdir(path.join(projectWorkspace, ".git"), { recursive: true });
+    await mkdir(path.join(managedWorkspace, ".git"), { recursive: true });
+
+    await openWorkspace(projectWorkspace);
+    registerThreadWorkspace(projectWorkspace, managedWorkspace, {
+      providerId: "modern.git-worktree",
+      managed: true,
+    });
+
+    await openWorkspace(managedWorkspace);
+
+    expect(state.workspaces.value.open).toContain(path.resolve(projectWorkspace));
+    expect(state.workspaces.value.open).toContain(path.resolve(managedWorkspace));
+    expect(listOpenProjects()).toEqual([path.resolve(projectWorkspace)]);
   });
 
   test("removes workspace and falls back to another open workspace", async () => {

@@ -18,6 +18,7 @@
     "@vscode/ripgrep": "^1.17.0",
     "comment-json": "^4.5.1",
     "simple-git": "^3.32.2",
+    "unique-names-generator": "^4.7.1",
     "vscode-uri": "^3.1.0",
     "zod": "^4.3.6"
   },

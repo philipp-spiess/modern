@@ -28,6 +28,7 @@ import { settings, writeSettings } from "./settings";
 import {
   closeTab,
   getActiveProjectCwd,
+  getActiveWorkspaceCwd,
   getProjectExpansionMap,
   getWorkspaceActiveThread,
   getWorkspacePanels,
@@ -155,7 +156,8 @@ const resolveProjectState = () => {
   const projects = listOpenProjects();
 
   return {
-    cwd: getActiveProjectCwd(),
+    cwd: getActiveWorkspaceCwd(),
+    projectCwd: getActiveProjectCwd(),
     projects,
     expandedByProject: getProjectExpansionMap(projects),
     activeThread: getWorkspaceActiveThread(),

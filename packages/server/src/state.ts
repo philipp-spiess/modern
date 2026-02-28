@@ -5,6 +5,8 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import agentExtension, { id as agentExtensionId } from "./extensions/agent";
 import filesExtension, { id as filesExtensionId } from "./extensions/files";
+import gitWorktreeExtension, { id as gitWorktreeExtensionId } from "./extensions/git-worktree";
+import { getManagedGitWorktree, listManagedGitWorktrees } from "./extensions/git-worktree/registry";
 import reviewExtension, { id as reviewExtensionId } from "./extensions/review";
 import terminalExtension, { id as terminalExtensionId } from "./extensions/terminal";
 import viewExtension, { id as viewExtensionId } from "./extensions/view";
@@ -121,6 +123,7 @@ const projectWorkspacesByProject = new Map<string, Map<string, ProjectWorkspaceR
 const extensionEntries = [
   { extension: viewExtension, id: viewExtensionId },
   { extension: agentExtension, id: agentExtensionId },
+  { extension: gitWorktreeExtension, id: gitWorktreeExtensionId },
   { extension: filesExtension, id: filesExtensionId },
   { extension: reviewExtension, id: reviewExtensionId },
   { extension: terminalExtension, id: terminalExtensionId },
@@ -218,11 +221,29 @@ export function listOpenWorkspaces(): readonly string[] {
 }
 
 export function getActiveProjectCwd(): string | null {
-  return getActiveWorkspaceCwd();
+  const activeWorkspaceCwd = getActiveWorkspaceCwd();
+  if (!activeWorkspaceCwd) {
+    return null;
+  }
+
+  return resolveProjectCwdForWorkspace(activeWorkspaceCwd) ?? activeWorkspaceCwd;
 }
 
 export function listOpenProjects(): readonly string[] {
-  return listOpenWorkspaces();
+  const projects: string[] = [];
+  const seen = new Set<string>();
+
+  for (const workspaceCwd of listOpenWorkspaces()) {
+    const projectCwd = resolveProjectCwdForWorkspace(workspaceCwd) ?? path.resolve(workspaceCwd);
+    if (seen.has(projectCwd)) {
+      continue;
+    }
+
+    seen.add(projectCwd);
+    projects.push(projectCwd);
+  }
+
+  return projects;
 }
 
 export function getProjectExpansionMap(projects: readonly string[] = listOpenProjects()): Record<string, boolean> {
@@ -326,6 +347,38 @@ function getOrCreateProjectWorkspaceRegistry(projectCwd: string): Map<string, Pr
   return registry;
 }
 
+function resolveProjectCwdForWorkspace(workspaceCwd: string): string | null {
+  const resolvedWorkspaceCwd = path.resolve(workspaceCwd);
+
+  let fallbackProjectCwd: string | null = null;
+  let directProjectCwd: string | null = null;
+
+  for (const [projectCwd, registry] of projectWorkspacesByProject) {
+    const record = registry.get(resolvedWorkspaceCwd);
+    if (!record) {
+      continue;
+    }
+
+    if (record.managed) {
+      return projectCwd;
+    }
+
+    if (projectCwd === resolvedWorkspaceCwd) {
+      directProjectCwd = projectCwd;
+      continue;
+    }
+
+    fallbackProjectCwd ??= projectCwd;
+  }
+
+  const managedRecord = getManagedGitWorktree(resolvedWorkspaceCwd);
+  if (managedRecord) {
+    return path.resolve(managedRecord.projectCwd);
+  }
+
+  return fallbackProjectCwd ?? directProjectCwd;
+}
+
 export function registerThreadWorkspace(
   projectCwd: string,
   workspaceCwd: string,
@@ -403,7 +456,23 @@ export async function releaseThreadWorkspace(
 export function listProjectWorkspaceCwds(projectCwd: string): string[] {
   const resolvedProjectCwd = path.resolve(projectCwd);
   const registry = getOrCreateProjectWorkspaceRegistry(resolvedProjectCwd);
-  return Array.from(registry.values(), (entry) => entry.cwd);
+
+  const ordered = new Set<string>();
+  ordered.add(resolvedProjectCwd);
+
+  for (const entry of registry.values()) {
+    ordered.add(path.resolve(entry.cwd));
+  }
+
+  for (const managedWorkspace of listManagedGitWorktrees()) {
+    if (path.resolve(managedWorkspace.projectCwd) !== resolvedProjectCwd) {
+      continue;
+    }
+
+    ordered.add(path.resolve(managedWorkspace.workspaceCwd));
+  }
+
+  return [...ordered];
 }
 
 export function getWorkspaceExpansionMap(
@@ -685,7 +754,10 @@ export async function openWorkspace(cwd: string) {
   }
 
   await assertGitWorkspace(resolvedCwd);
-  getOrCreateProjectWorkspaceRegistry(resolvedCwd);
+
+  if (!resolveProjectCwdForWorkspace(resolvedCwd)) {
+    getOrCreateProjectWorkspaceRegistry(resolvedCwd);
+  }
 
   openWorkspacePromise = (async () => {
     state.workspaces.value = withActiveWorkspace(resolvedCwd);

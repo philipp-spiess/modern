@@ -209,5 +209,6 @@ For production usage, see:
 
 - `packages/server/src/extensions/files/index.ts`
 - `packages/server/src/extensions/agent/index.ts`
+- `packages/server/src/extensions/git-worktree/index.ts`
 - `packages/server/src/extensions/review/index.ts`
 - `packages/server/src/extensions/terminal/index.ts`
