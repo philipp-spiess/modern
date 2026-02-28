@@ -462,7 +462,7 @@ export default function AgentChatPanel({ state, workspaceCwd }: ExtensionPanelPr
         projectCwd: workspaceCwd,
         ...(workspaceProviderId ? { workspaceProviderId } : {}),
       });
-      await openProjectWithThread(workspaceCwd, created.threadPath, "New Thread");
+      await openProjectWithThread(created.cwd || workspaceCwd, created.threadPath, "New Thread");
 
       try {
         await applyDraftPreferencesToThread(created.threadPath, preferences);

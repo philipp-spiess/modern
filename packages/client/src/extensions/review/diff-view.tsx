@@ -384,7 +384,7 @@ export default function DiffViewPanel({ state, workspaceCwd }: ExtensionPanelPro
 
       if (!threadPath) {
         const created = await client.agent.threadCreate({ projectCwd: cwd });
-        await openProjectWithThread(cwd, created.threadPath, activeThread?.title ?? "New Thread");
+        await openProjectWithThread(created.cwd || cwd, created.threadPath, activeThread?.title ?? "New Thread");
         threadPath = created.threadPath;
       }
 
