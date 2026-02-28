@@ -105,7 +105,7 @@ function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: Sideb
   );
 
   const onOpenThread = useCallback(async (cwd: string, thread: ThreadSummary) => {
-    await openProjectWithThread(cwd, thread.path, thread.title);
+    await openProjectWithThread(thread.workspaceCwd || cwd, thread.path, thread.title);
   }, []);
 
   const onCreateThread = useCallback(async () => {

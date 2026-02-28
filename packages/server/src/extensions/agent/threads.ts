@@ -58,6 +58,7 @@ interface ThreadLifecycleRecord {
 export interface ThreadSummary {
   id: string;
   path: string;
+  workspaceCwd: string;
   title: string;
   createdAt: string;
   updatedAt: string;
@@ -92,7 +93,7 @@ export async function listThreadsForWorkspace(cwd: string, limit = DEFAULT_THREA
       continue;
     }
 
-    output.push(await toThreadSummary(session));
+    output.push(await toThreadSummary(session, cwd));
   }
 
   return output;
@@ -166,7 +167,7 @@ export async function archiveThreadForProject(
   };
 }
 
-async function toThreadSummary(session: SessionInfo): Promise<ThreadSummary> {
+async function toThreadSummary(session: SessionInfo, workspaceCwd: string): Promise<ThreadSummary> {
   const explicitTitle = normalize(session.name);
   const firstPrompt = normalizeSessionFirstPrompt(session.firstMessage);
   const resolvedThreadPath = path.resolve(session.path);
@@ -174,22 +175,37 @@ async function toThreadSummary(session: SessionInfo): Promise<ThreadSummary> {
   const hasUnread = getThreadUnreadState(resolvedThreadPath);
 
   if (explicitTitle) {
-    return buildThreadSummary(session, truncate(explicitTitle, TITLE_MAX_LENGTH), false, isStreaming, hasUnread);
+    return buildThreadSummary(
+      session,
+      workspaceCwd,
+      truncate(explicitTitle, TITLE_MAX_LENGTH),
+      false,
+      isStreaming,
+      hasUnread,
+    );
   }
 
   const directTitle = resolveDirectTitleFromFirstPrompt(firstPrompt);
   if (directTitle) {
-    return buildThreadSummary(session, truncate(directTitle, TITLE_MAX_LENGTH), false, isStreaming, hasUnread);
+    return buildThreadSummary(
+      session,
+      workspaceCwd,
+      truncate(directTitle, TITLE_MAX_LENGTH),
+      false,
+      isStreaming,
+      hasUnread,
+    );
   }
 
   const isTitleGenerating = queueTitleGenerationIfNeeded(session, firstPrompt);
   const fallbackTitle = firstPrompt ? truncate(firstPrompt, TITLE_MAX_LENGTH) : "Untitled Thread";
 
-  return buildThreadSummary(session, fallbackTitle, isTitleGenerating, isStreaming, hasUnread);
+  return buildThreadSummary(session, workspaceCwd, fallbackTitle, isTitleGenerating, isStreaming, hasUnread);
 }
 
 function buildThreadSummary(
   session: SessionInfo,
+  workspaceCwd: string,
   title: string,
   isTitleGenerating: boolean,
   isStreaming: boolean,
@@ -198,6 +214,7 @@ function buildThreadSummary(
   return {
     id: session.id,
     path: session.path,
+    workspaceCwd: path.resolve(workspaceCwd),
     title,
     createdAt: session.created.toISOString(),
     updatedAt: session.modified.toISOString(),
