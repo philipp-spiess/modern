@@ -103,6 +103,7 @@ function App() {
   );
 
   const cwd = workspaceData?.cwd;
+  const activeProjectCwd = workspaceData?.projectCwd ?? cwd;
   const projects = workspaceData?.projects ?? [];
   const expandedByProject = useMemo(() => workspaceData?.expandedByProject ?? {}, [workspaceData?.expandedByProject]);
   const activeThread = useMemo(
@@ -156,7 +157,7 @@ function App() {
         {sidebarVisible && (
           <>
             <Sidebar
-              activeCwd={cwd}
+              activeCwd={activeProjectCwd ?? cwd}
               activeThread={activeThread}
               projects={projects}
               expandedByProject={expandedByProject}
