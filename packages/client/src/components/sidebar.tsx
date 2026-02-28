@@ -16,6 +16,7 @@ import {
   FolderClosedIcon,
   FolderOpenIcon,
   FolderPlusIcon,
+  GitBranch,
   LoaderCircle,
   PanelLeftClose,
   SquarePen,
@@ -278,6 +279,8 @@ function WorkspaceItem({
         <ul className="mt-0.5 mb-1 -mx-2.5">
           {threads.map((thread) => {
             const isActiveThread = activeThreadPath === thread.path;
+            const isWorktreeThread = thread.workspaceCwd !== cwd;
+
             return (
               <li key={thread.id} className="group/thread relative">
                 <button
@@ -303,6 +306,18 @@ function WorkspaceItem({
                       <span className="block truncate">{thread.title}</span>
                     )}
                   </span>
+                  {isWorktreeThread ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex shrink-0 items-center">
+                          <GitBranch className="size-3 text-neutral-500" aria-hidden strokeWidth={1.75} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" sideOffset={6}>
+                        <span>Workspace: {basename(thread.workspaceCwd)}</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
                   <span className="shrink-0 text-xs text-white/35 group-hover/thread:opacity-0">
                     {formatRelativeAge(thread.updatedAt)}
                   </span>
