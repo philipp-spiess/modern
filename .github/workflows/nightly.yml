@@ -72,5 +72,4 @@ jobs:
           projectPath: src-tauri
           uploadUpdaterJson: true
           uploadUpdaterSignatures: true
-          args: --target aarch64-apple-darwin --bundles dmg
-          releaseAssetNamePattern: modern-arm64[ext]
+          args: --target aarch64-apple-darwin --bundles app,dmg
