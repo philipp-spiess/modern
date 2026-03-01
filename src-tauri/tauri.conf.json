@@ -54,6 +54,11 @@
           "permissions": ["core:menu:default"]
         },
         {
+          "identifier": "updater",
+          "windows": ["*"],
+          "permissions": ["updater:default", "process:default"]
+        },
+        {
           "identifier": "webview-window",
           "windows": ["*"],
           "permissions": [
@@ -69,8 +74,15 @@
       ]
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFNjcwNTQ2QTVERURCRjkKUldUNTI5NmxSZ1ZuSHFGS3lOUXVQM0taVHhaSUlqQjAvYkdYdXpKZTVqZ0ZocTZnVGlQL2ZnRDgK",
+      "endpoints": ["https://github.com/philipp-spiess/modern/releases/download/nightly/latest.json"]
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["app", "deb", "rpm", "appimage", "nsis", "msi"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "resources": ["icon-assets/Assets.car", "pi-agent/package.json", "binaries/rg"],

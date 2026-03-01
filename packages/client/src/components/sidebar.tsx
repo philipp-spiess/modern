@@ -36,6 +36,7 @@ import { orpc } from "../lib/rpc";
 import { getSyncedSpinStyle } from "../lib/spinner";
 import { toggleSidebar } from "../lib/sidebar-store";
 import { basename } from "../utils/path";
+import SidebarUpdaterBadge from "./sidebar-updater-badge";
 
 type SidebarProps = {
   activeCwd: string;
@@ -130,7 +131,10 @@ function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: Sideb
 
   return (
     <div className="flex max-h-screen h-full flex-col p-2 pr-1">
-      <div data-tauri-drag-region className="h-10 shrink-0 flex items-center justify-end">
+      <div data-tauri-drag-region className="h-10 shrink-0 flex items-center justify-between">
+        <div className="ml-1.5">
+          <SidebarUpdaterBadge />
+        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <button

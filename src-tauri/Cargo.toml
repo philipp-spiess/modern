@@ -30,3 +30,5 @@ window-vibrancy = { git = "https://github.com/tauri-apps/window-vibrancy", branc
 objc2 = "0.6.3"
 objc2-app-kit = "0.3.2"
 objc2-foundation = "0.3.2"
+tauri-plugin-updater = "2.10.0"
+tauri-plugin-process = "2.3.1"

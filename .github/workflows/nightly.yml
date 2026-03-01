@@ -21,59 +21,55 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for new commits since last nightly
-        id: check
-        run: |
-          LAST_NIGHTLY_SHA=$(git rev-list --tags='nightly-v*' --max-count=1 2>/dev/null || true)
-          HEAD_SHA=$(git rev-parse HEAD)
-          if [ "$LAST_NIGHTLY_SHA" = "$HEAD_SHA" ]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "No new commits since last nightly ($HEAD_SHA), skipping."
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "New commits found (last nightly: ${LAST_NIGHTLY_SHA:-none}, HEAD: $HEAD_SHA)."
-          fi
-
       - name: Setup Bun
-        if: steps.check.outputs.skip != 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
 
       - name: Setup Rust
-        if: steps.check.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Rust Cache
-        if: steps.check.outputs.skip != 'true'
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
       - name: Install Dependencies
-        if: steps.check.outputs.skip != 'true'
         run: bun install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get current date
-        if: steps.check.outputs.skip != 'true'
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+      - name: Set nightly app version
+        id: nightly_version
+        run: |
+          BASE_VERSION="$(jq -r '.version' src-tauri/tauri.conf.json)"
+          BASE_CLEAN="${BASE_VERSION%%-*}"
+          IFS='.' read -r MAJOR MINOR PATCH <<<"$BASE_CLEAN"
+          if [ -z "${MAJOR:-}" ] || [ -z "${MINOR:-}" ] || [ -z "${PATCH:-}" ]; then
+            echo "Invalid base version: $BASE_VERSION"
+            exit 1
+          fi
+          NIGHTLY_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-nightly.${GITHUB_RUN_NUMBER}"
+          echo "version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
+          tmp="$(mktemp)"
+          jq --arg version "$NIGHTLY_VERSION" '.version = $version' src-tauri/tauri.conf.json > "$tmp"
+          mv "$tmp" src-tauri/tauri.conf.json
 
       - name: Build and Release (arm64 DMG)
-        if: steps.check.outputs.skip != 'true'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: nightly-v${{ steps.date.outputs.date }}
-          releaseName: "Nightly Build v${{ steps.date.outputs.date }}"
-          releaseBody: "Nightly build based on the latest changes."
+          tagName: nightly
+          releaseName: "Nightly Build v${{ steps.nightly_version.outputs.version }}"
+          releaseBody: "Nightly build based on the latest changes (${{ steps.nightly_version.outputs.version }})."
           releaseDraft: false
           prerelease: true
+          projectPath: src-tauri
           uploadUpdaterJson: true
           uploadUpdaterSignatures: true
           args: --target aarch64-apple-darwin --bundles dmg
