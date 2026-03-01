@@ -131,8 +131,8 @@ function Sidebar({ activeCwd, activeThread, projects, expandedByProject }: Sideb
 
   return (
     <div className="flex max-h-screen h-full flex-col p-2 pr-1">
-      <div data-tauri-drag-region className="h-10 shrink-0 flex items-center justify-between">
-        <div className="ml-1.5">
+      <div data-tauri-drag-region className="h-10 shrink-0 flex items-center justify-end gap-1.5">
+        <div className="mr-0.5">
           <SidebarUpdaterBadge />
         </div>
         <Tooltip>
