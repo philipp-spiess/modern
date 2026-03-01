@@ -58,7 +58,7 @@ jobs:
           mv "$tmp" src-tauri/tauri.conf.json
 
       - name: Build and Release (arm64 DMG)
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
