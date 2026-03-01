@@ -76,7 +76,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFNjcwNTQ2QTVERURCRjkKUldUNTI5NmxSZ1ZuSHFGS3lOUXVQM0taVHhaSUlqQjAvYkdYdXpKZTVqZ0ZocTZnVGlQL2ZnRDgK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZCRkZDMjFFRDZCRDgwMkIKUldRcmdMM1dIc0wvYTZraWxCSEd6Z1FQOUtzcjlmOVNqdXlEdHpMTFBJMTE0Z2p4MnZtT0NuWWIK",
       "endpoints": ["https://github.com/philipp-spiess/modern/releases/download/nightly/latest.json"]
     }
   },
