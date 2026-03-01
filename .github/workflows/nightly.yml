@@ -70,6 +70,5 @@ jobs:
           releaseDraft: false
           prerelease: true
           projectPath: src-tauri
-          uploadUpdaterJson: true
-          uploadUpdaterSignatures: true
+          includeUpdaterJson: true
           args: --target aarch64-apple-darwin --bundles app,dmg
