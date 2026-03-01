@@ -65,7 +65,7 @@ jobs:
 
       - name: Build and Release (arm64 DMG)
         if: steps.check.outputs.skip != 'true'
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
