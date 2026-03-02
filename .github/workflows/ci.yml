@@ -38,5 +38,5 @@ jobs:
       - name: Check & Lint
         run: bun run check
 
-      - name: Build App
-        run: bun run tauri build
+      - name: Build App (No Bundle)
+        run: bun run tauri build --no-bundle
