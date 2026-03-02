@@ -33,3 +33,7 @@ tsconfig.tsbuildinfo
 # Copied from node_modules during server postbuild
 src-tauri/pi-agent/
 src-tauri/binaries/rg
+
+# Desktop build artifacts
+packages/desktop/build/
+packages/desktop/node_modules/

@@ -5,6 +5,8 @@
     "bun.lock",
     "**/dist/**",
     "**/node_modules/**",
+    "packages/desktop/build/**",
+    "packages/desktop/node_modules/**",
     "src-tauri/target/**",
     "src-tauri/gen/**",
     "src-tauri/capabilities/**",
